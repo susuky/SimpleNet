@@ -1,9 +1,11 @@
 
+import os
 import timm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.transforms as T
+
 
 DEBUG =  __name__ == '__main__'
 
@@ -218,4 +220,26 @@ if DEBUG:
     anomaly_map, image_scores = simplenet(x)
     assert anomaly_map.shape == (1, 224, 224)
     assert image_scores.shape == (1,)
+
+
+def save_model(model, path='models/model.pth'):
+    if not os.paht.exists(path):
+        os.makedirs(path)
+    
+    state_dict = {}
+    state_dict['model'] = model.state_dict()
+
+    metadata = {}
+    metadata['max'] = model.max
+    metadata['min'] = model.min
+    state_dict['metadata'] = metadata
+    torch.save(state_dict, path)
+
+
+def load_model(model, path='models/model.pth'):
+    state_dict = torch.load(path)
+    model.load_state_dict(state_dict['model'])
+    model.max = state_dict['metadata']['max']
+    model.min = state_dict['metadata']['min']
+    return model
 

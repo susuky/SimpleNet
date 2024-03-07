@@ -9,6 +9,7 @@ from torch.utils.data import Dataset, DataLoader
 
 DEBUG = __name__ == '__main__'
 
+
 def get_transforms(phase='train', img_size=(312, 312)):
 
     if phase == 'train':
@@ -61,7 +62,7 @@ class MVTecADDataset(Dataset):
         for path in self.data_path.rglob('*.png'):
             x = cv2.imread(path.as_posix())
             x = cv2.cvtColor(x, cv2.COLOR_BGR2RGB)
-            y = int(path.parent.name == 'good')
+            y = int(path.parent.name != 'good')
             name = path.as_posix()
 
             xs.append(x)
