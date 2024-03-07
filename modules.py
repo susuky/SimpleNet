@@ -193,7 +193,10 @@ class SimpleNet(nn.Module):
         self.generator = Generator(std)
         self.discriminator = Discriminator(self.backbone.out_dims)
         self.anomaly_map_generator = AnomalyMapGenerator()
-        
+        # for anomaly_map localization
+        self.max = 1.0
+        self.min = 0.0
+                
     @property
     def bs(self):
         return self.adaptor.bs

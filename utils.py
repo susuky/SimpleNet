@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 import os
 import random
+import sklearn.metrics
 import sys
 
 from collections import defaultdict 
@@ -46,6 +47,18 @@ def seed_everything(seed=42):
                 (False, True) if seed == 0 else (True, False)
             )
 
+
+def compute_imagewise_metrics(outputs: np.ndarray, 
+                    targets: np.ndarray, 
+                    threshold: float = 0.5):
+    metrics = {}
+    metrics['I-AUROC'] = sklearn.metrics.roc_auc_score(targets, outputs)
+    precision, recall, _ = metrics.precision_recall_curve(targets, outputs)
+    metrics['I-PRAUC'] = sklearn.metrics.auc(recall, precision)
+    preds = (outputs > threshold).astype(np.int32)
+    metrics['I-F1score'] = sklearn.metrics.f1_score(targets, preds)
+    metrics['I-Accuracy'] = sklearn.metrics.accuracy_score(targets, preds)
+    return metrics
 
 
 class AverageMeter:
@@ -104,10 +117,13 @@ def compute_anomaly_map(patch_score, sigma=4, image_size=None):
     return blur
 
 
-def image_tonumpy(img, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]):
+def image_tonumpy(img, 
+                  mean=[0.485, 0.456, 0.406], 
+                  std=[0.229, 0.224, 0.225],
+                  scale=255.0):
     img = img.cpu().numpy().transpose(1, 2, 0)
     img = img * np.array(std) + np.array(mean)
-    img = img.clip(0, 1) * 255
+    img = img.clip(0, 1) * scale
     return img
 
 
