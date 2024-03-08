@@ -48,16 +48,29 @@ def seed_everything(seed=42):
             )
 
 
-def compute_imagewise_metrics(outputs: np.ndarray, 
+def compute_metrics(outputs: np.ndarray, 
                     targets: np.ndarray, 
                     threshold: float = 0.5):
+    
+    if outputs.ndim != 1: 
+        prefix = 'P-'     # pixelwise
+        outputs = outputs.ravel()
+        targets = targets.ravel()
+    else:                 
+        prefix = 'I-'     # imagewise
+
     metrics = {}
-    metrics['I-AUROC'] = sklearn.metrics.roc_auc_score(targets, outputs)
+    metrics[f'{prefix}AUROC'] = sklearn.metrics.roc_auc_score(targets, outputs)
     precisions, recalls, thresholds = metrics.precision_recall_curve(targets, outputs)
-    metrics['I-PRAUC'] = sklearn.metrics.auc(recalls, precisions)
+    metrics[f'{prefix}PRAUC'] = sklearn.metrics.auc(recalls, precisions)
+    if threshold is None:
+        f1_scores =  (2 * precisions * recalls) / (precisions + recalls + 1e-10)
+        threshold = thresholds[f1_scores.argmax()]
+
     preds = (outputs > threshold).astype(np.int32)
-    metrics['I-F1score'] = sklearn.metrics.f1_score(targets, preds)
-    metrics['I-Accuracy'] = sklearn.metrics.accuracy_score(targets, preds)
+    metrics[f'{prefix}F1score'] = sklearn.metrics.f1_score(targets, preds)
+    metrics[f'{prefix}Accuracy'] = sklearn.metrics.accuracy_score(targets, preds)
+    metrics['threshold'] = threshold
     return metrics
 
 

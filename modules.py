@@ -201,13 +201,16 @@ class SimpleNet(nn.Module):
     def bs(self):
         return self.adaptor.bs
     
-    def forward(self, x):
+    def forward(self, x, track=False):
         with torch.no_grad():
             bs, _, height, width = x.shape
             x = self.backbone(x)
             embeddings = self.adaptor(x)                  # (bs*h*w, emb_size)
             patch_scores = self.discriminator(embeddings) # (bs*h*w, 1)
             image_scores = patch_scores.view(self.bs, -1).amax(axis=1)
+            if track:
+                self.max = max(self.max, image_scores.max().item())
+                self.min = min(self.min, image_scores.min().item())
 
             anomaly_map = patch_scores.view(bs, 
                                             1, 
