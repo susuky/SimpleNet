@@ -53,8 +53,8 @@ def compute_imagewise_metrics(outputs: np.ndarray,
                     threshold: float = 0.5):
     metrics = {}
     metrics['I-AUROC'] = sklearn.metrics.roc_auc_score(targets, outputs)
-    precision, recall, _ = metrics.precision_recall_curve(targets, outputs)
-    metrics['I-PRAUC'] = sklearn.metrics.auc(recall, precision)
+    precisions, recalls, thresholds = metrics.precision_recall_curve(targets, outputs)
+    metrics['I-PRAUC'] = sklearn.metrics.auc(recalls, precisions)
     preds = (outputs > threshold).astype(np.int32)
     metrics['I-F1score'] = sklearn.metrics.f1_score(targets, preds)
     metrics['I-Accuracy'] = sklearn.metrics.accuracy_score(targets, preds)

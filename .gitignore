@@ -4,7 +4,10 @@ __pycache__/
 *$py.class
 
 # Dataset
-mvtecad_dataset/*
+mvtecad_dataset/
+
+# Model
+models/
 
 # C extensions
 *.so
