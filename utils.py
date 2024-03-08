@@ -124,6 +124,6 @@ def image_tonumpy(img,
     img = img.cpu().numpy().transpose(1, 2, 0)
     img = img * np.array(std) + np.array(mean)
     img = img.clip(0, 1) * scale
-    return img
+    return img.astype(np.uint8)
 
 

@@ -196,7 +196,7 @@ class SimpleNet(nn.Module):
         # for anomaly_map localization
         self.max = 1.0
         self.min = 0.0
-                
+
     @property
     def bs(self):
         return self.adaptor.bs
@@ -226,7 +226,7 @@ if DEBUG:
 
 
 def save_model(model, path='models/model.pth'):
-    if not os.paht.exists(path):
+    if not os.path.exists(path):
         os.makedirs(path)
     
     state_dict = {}

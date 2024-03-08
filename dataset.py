@@ -75,7 +75,7 @@ class MVTecADDataset(Dataset):
 
 
 if DEBUG:
-    dataset = MVTecADDataset()
+    dataset = MVTecADDataset(category='cable')
     loader = DataLoader(dataset, batch_size=2, num_workers=0)
     for x, y, name in loader:
         print(x.shape, y, name)

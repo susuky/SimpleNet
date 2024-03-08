@@ -1,20 +1,23 @@
 
 import argparse
+import cv2
+import os
 import torch
 
+from pathlib import Path
 from tqdm import tqdm
 
 from dataset import MVTecADDataset
-from modules import ComputeLoss, SimpleNet
-from utils import seed_everything, MetricMonitor
+from modules import ComputeLoss, SimpleNet, save_model
+from utils import seed_everything, MetricMonitor, image_tonumpy
 
 
 def parse_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model-name', type=str, default='resnet18', help='model name')
-    parser.add_argument('--root', type=str, default='mvtecad_dataset', help='root')
+    parser.add_argument('--backbone', type=str, default='resnet18', help='model name')
+    parser.add_argument('--root', type=str, default='mvtecad_dataset', help='dataset root')
     parser.add_argument('--category', type=str, default='bottle', help='category')
-    parser.add_argument('--model-path', type=str, default=f'.models/model.pth', help='model path')
+    parser.add_argument('--model-path', type=str, default=f'./models/model.pth', help='model path')
     parser.add_argument('--img-size', '--imgsz', nargs='+', type=int, default=[312, 312], help='inference size h,w')
     parser.add_argument('--bs', '--batch-size', type=int, default=4, help='batch size')
     parser.add_argument('--epochs', type=int, default=160, help='number of epochs')
@@ -23,9 +26,15 @@ def parse_opt():
     return opt
 
 
-def evaluate(model, dl, device, draw=False, epoch=None):
+def evaluate(model, dl, device, epoch=None, draw=False, **kwargs):
     metric_monitor = MetricMonitor()
     model.eval()
+
+    if draw:
+        category = kwargs.get('category', 'bottle')
+        parent = os.path.join('run', 'eval', category)
+        if not os.path.exists(parent):
+            os.makedirs(parent)
 
     scores = []
     labels = []
@@ -37,13 +46,17 @@ def evaluate(model, dl, device, draw=False, epoch=None):
         anomaly_map, image_scores = model(xs)
         scores.extend(image_scores.cpu().numpy().tolist())
 
-        metric_monitor.update('Loss', )
-        stream.set_description(
-            f'Epoch: {epoch}. Validation.      {metric_monitor}'
-        )
+        #metric_monitor.update('Loss', )
+        #stream.set_description(
+        #    f'Epoch: {epoch}. Validation.      {metric_monitor}'
+        #)
         if draw:
             # TODO: save image
-            ...
+            for img, path in zip(xs, names):
+                path = Path(path)
+                stem = path.stem
+                img = image_tonumpy(img)
+                cv2.imwrite(os.path.join(parent, f'{stem}-{epoch}.jpg'), img)
 
 
 def one_epoch(model, criterion, optimizers, dl, epoch, device):
@@ -77,7 +90,7 @@ def train(opt=parse_opt()):
     test_ds = MVTecADDataset(opt.root, opt.category, 'test', opt.img_size)
     test_dl = torch.utils.data.DataLoader(test_ds, batch_size=opt.bs, num_workers=4, shuffle=False)
 
-    model = SimpleNet(opt.model_name, pretrained=True).to(device)
+    model = SimpleNet(opt.backbone, pretrained=True).to(device)
 
     criterion = ComputeLoss()
     optimizers = [
@@ -90,7 +103,10 @@ def train(opt=parse_opt()):
 
         if epoch % 10 == 0:
             evaluate(model, test_dl, device, draw=True)
-    torch.save(model.state_dict(), opt.model_path)
+
+    model_path = f'models/{opt.category}.pth'
+    save_model(model, path=model_path)
+    
 
 
 if __name__ == '__main__':
