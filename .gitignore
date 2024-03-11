@@ -5,6 +5,7 @@ __pycache__/
 
 # Dataset
 mvtecad_dataset/
+run/
 
 # Model
 models/
