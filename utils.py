@@ -52,12 +52,9 @@ def compute_metrics(outputs: np.ndarray,
                     targets: np.ndarray, 
                     threshold: float = 0.5):
     
-    if outputs.ndim != 1: 
-        prefix = 'P-'     # pixelwise
-        outputs = outputs.ravel()
-        targets = targets.ravel()
-    else:                 
-        prefix = 'I-'     # imagewise
+    prefix = 'I-' if outputs.ndim == 1 else 'P-'
+    outputs = outputs.ravel()
+    targets = targets.ravel()
 
     metrics = {}
     metrics[f'{prefix}AUROC'] = sklearn.metrics.roc_auc_score(targets, outputs)

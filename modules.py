@@ -194,8 +194,11 @@ class SimpleNet(nn.Module):
         self.discriminator = Discriminator(self.backbone.out_dims)
         self.anomaly_map_generator = AnomalyMapGenerator()
         # for anomaly_map localization
-        self.max = 1.0
-        self.min = 0.0
+        self.reset_minmax()
+
+    def reset_minmax(self):
+        self.max = float('-inf')
+        self.min = float('inf')
 
     @property
     def bs(self):

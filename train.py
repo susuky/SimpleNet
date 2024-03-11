@@ -46,10 +46,6 @@ def evaluate(model, dl, device, epoch=None, draw=False, **kwargs):
         anomaly_map, image_scores = model(xs)
         scores.extend(image_scores.cpu().numpy().tolist())
 
-        #metric_monitor.update('Loss', )
-        #stream.set_description(
-        #    f'Epoch: {epoch}. Validation.      {metric_monitor}'
-        #)
         if draw:
             # TODO: save image
             for img, path in zip(xs, names):
@@ -100,12 +96,12 @@ def train(opt=parse_opt()):
 
     for epoch in range(1, opt.epochs+1):
         one_epoch(model, criterion, optimizers, train_dl, epoch, device)
+        evaluate(model, test_dl, device, epoch, draw=False, category=opt.category)
 
-        if epoch % 10 == 0:
-            evaluate(model, test_dl, device, draw=True)
+    evaluate(model, test_dl, device, epoch='last', draw=True, category=opt.category)
 
     model_path = f'models/{opt.category}.pth'
-    save_model(model, path=model_path)
+    #save_model(model, path=model_path)
     
 
 
