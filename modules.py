@@ -159,7 +159,7 @@ class ComputeLoss:
         scores = discriminator(torch.cat([embedding, fake_embedding], dim=0))
         true_scores, fake_scores = torch.split(scores, nums, dim=0)
         
-        # XXX: Note that loss function in Equation (3) in the paper should be:
+        # XXX: Note that the loss function in Equation (7) in the paper should be:
         # loss = (torch.clip(self.thr - true_scores, min=0) + 
         #         torch.clip(-self.thr + fake_scores, min=0)
         # and it may not work as intended.

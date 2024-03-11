@@ -1,6 +1,7 @@
 
 import argparse
 import cv2
+import numpy as np
 import os
 import torch
 
@@ -9,7 +10,7 @@ from tqdm import tqdm
 
 from dataset import MVTecADDataset
 from modules import ComputeLoss, SimpleNet, save_model
-from utils import seed_everything, MetricMonitor, image_tonumpy
+from utils import seed_everything, MetricMonitor, image_tonumpy, compute_metrics
 
 
 def parse_opt():
@@ -32,14 +33,13 @@ def evaluate(model, dl, device, epoch=None, draw=False, **kwargs):
 
     if draw:
         category = kwargs.get('category', 'bottle')
-        parent = os.path.join('run', 'eval', category)
+        parent = os.path.join('run', category, epoch)
         if not os.path.exists(parent):
             os.makedirs(parent)
 
     scores = []
     labels = []
-    stream = tqdm(dl)
-    for i, (xs, ys, names) in enumerate(stream, 1):
+    for i, (xs, ys, names) in enumerate(dl, 1):
         xs = xs.to(device)
         labels.extend(ys.numpy().tolist())
 
@@ -53,6 +53,11 @@ def evaluate(model, dl, device, epoch=None, draw=False, **kwargs):
                 stem = path.stem
                 img = image_tonumpy(img)
                 cv2.imwrite(os.path.join(parent, f'{stem}-{epoch}.jpg'), img)
+
+    metrics = compute_metrics(np.array(scores), np.array(labels), None)
+    metric_monitor.update_dict(metrics)
+    print(metric_monitor)
+    return metric_monitor
 
 
 def one_epoch(model, criterion, optimizers, dl, epoch, device):
@@ -92,13 +97,14 @@ def train(opt=parse_opt()):
 
     criterion = ComputeLoss()
     optimizers = [
-        torch.optim.Adam(model.adaptor.parameters(), lr=1e-4, weight_decay=1e-5),
+        torch.optim.AdamW(model.adaptor.parameters(), lr=1e-4, weight_decay=1e-5),
         torch.optim.Adam(model.discriminator.parameters(), lr=2e-4, weight_decay=1e-5),
     ]
 
     for epoch in range(1, opt.epochs+1):
+        draw = epoch % 10 == 0
         one_epoch(model, criterion, optimizers, train_dl, epoch, device)
-        evaluate(model, test_dl, device, epoch, draw=False, category=opt.category)
+        evaluate(model, test_dl, device, epoch, draw=draw, category=opt.category)
 
     evaluate(model, test_dl, device, epoch='last', draw=True, category=opt.category)
 
