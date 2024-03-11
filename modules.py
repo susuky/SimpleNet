@@ -119,6 +119,8 @@ class Generator(nn.Module):
         
     def forward(self, x):
         if self.training:
+            # Note: If you use `x += torch.normal(0, self.std, x.shape)`,
+            # it will affect the original embedding vector `x`.
             x = x + torch.normal(0, self.std, x.shape).to(x.device)
         return x
     
@@ -202,6 +204,7 @@ class SimpleNet(nn.Module):
         self.anomaly_map_generator = AnomalyMapGenerator()
         # for anomaly_map localization
         self.reset_minmax()
+        self.threshold = 0.1
 
     def reset_minmax(self):
         self.max = float('-inf')
@@ -228,7 +231,7 @@ class SimpleNet(nn.Module):
                                             self.adaptor.width)
             anomaly_map = self.anomaly_map_generator(anomaly_map, 
                                                      img_size=(height, width))
-        return anomaly_map, image_scores
+        return -anomaly_map, image_scores
     
 if DEBUG:
     simplenet = SimpleNet('efficientnet_b0', pretrained=True)

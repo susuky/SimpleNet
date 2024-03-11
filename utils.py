@@ -50,7 +50,7 @@ def seed_everything(seed=42):
 
 def compute_metrics(outputs: np.ndarray, 
                     targets: np.ndarray, 
-                    threshold: float = 0.5):
+                    threshold: float = 0.1) -> dict:
     
     prefix = 'I-' if outputs.ndim == 1 else 'P-'
     outputs = outputs.ravel()
@@ -60,14 +60,16 @@ def compute_metrics(outputs: np.ndarray,
     metrics[f'{prefix}AUROC'] = sklearn.metrics.roc_auc_score(targets, outputs)
     precisions, recalls, thresholds = sklearn.metrics.precision_recall_curve(targets, outputs)
     metrics[f'{prefix}PRAUC'] = sklearn.metrics.auc(recalls, precisions)
-    if threshold is None:
-        f1_scores =  (2 * precisions * recalls) / (precisions + recalls + 1e-10)
-        threshold = thresholds[f1_scores.argmax()]
+    if prefix == 'I-':
+        if threshold is None:
+            # Note: This threshold may not be within 0 to 1
+            f1_scores =  (2 * precisions * recalls) / (precisions + recalls + 1e-10)
+            threshold = thresholds[f1_scores.argmax()]
 
-    preds = (outputs > threshold).astype(np.int32)
-    metrics[f'{prefix}F1score'] = sklearn.metrics.f1_score(targets, preds)
-    metrics[f'{prefix}Accuracy'] = sklearn.metrics.accuracy_score(targets, preds)
-    metrics['threshold'] = threshold
+        preds = (outputs > threshold).astype(np.int32)
+        metrics[f'F1score'] = sklearn.metrics.f1_score(targets, preds)
+        metrics[f'Accuracy'] = sklearn.metrics.accuracy_score(targets, preds)
+        metrics['threshold'] = threshold
     return metrics
 
 
@@ -136,4 +138,7 @@ def image_tonumpy(img,
     img = img.clip(0, 1) * scale
     return img.astype(np.uint8)
 
+
+def normalize(x, min, max):
+    return (x - min) / (max - min)
 

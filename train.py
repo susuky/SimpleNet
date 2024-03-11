@@ -10,7 +10,13 @@ from tqdm import tqdm
 
 from dataset import MVTecADDataset
 from modules import ComputeLoss, SimpleNet, save_model
-from utils import seed_everything, MetricMonitor, image_tonumpy, compute_metrics
+from utils import (
+    seed_everything, 
+    MetricMonitor, 
+    image_tonumpy, 
+    compute_metrics, 
+    normalize,
+)
 
 
 def parse_opt():
@@ -33,29 +39,36 @@ def evaluate(model, dl, device, epoch=None, draw=False, **kwargs):
 
     if draw:
         category = kwargs.get('category', 'bottle')
-        parent = os.path.join('run', category, epoch)
+        parent = os.path.join('run', category, f'{epoch}')
         if not os.path.exists(parent):
             os.makedirs(parent)
 
     scores = []
     labels = []
+    model.reset_minmax()
     for i, (xs, ys, names) in enumerate(dl, 1):
         xs = xs.to(device)
         labels.extend(ys.numpy().tolist())
 
-        anomaly_map, image_scores = model(xs)
+        anomaly_maps, image_scores = model(xs, track=True)
         scores.extend(image_scores.cpu().numpy().tolist())
 
         if draw:
-            # TODO: save image
-            for img, path in zip(xs, names):
+            for img, path, anomaly_map in zip(xs, names, anomaly_maps):
                 path = Path(path)
                 stem = path.stem
                 img = image_tonumpy(img)
                 cv2.imwrite(os.path.join(parent, f'{stem}-{epoch}.jpg'), img)
 
+                anomaly_map = anomaly_map.cpu().numpy()
+                anomaly_map = normalize(anomaly_map, model.min, model.max)
+                anomaly_map = (anomaly_map * 255).astype(np.uint8)
+                anomaly_map = cv2.applyColorMap(anomaly_map, cv2.COLORMAP_JET)
+                cv2.imwrite(os.path.join(parent, f'{stem}-{epoch}-heatmap.jpg'), anomaly_map)
+
     metrics = compute_metrics(np.array(scores), np.array(labels), None)
     metric_monitor.update_dict(metrics)
+    model.threshold = metrics['threshold']
     print(metric_monitor)
     return metric_monitor
 
@@ -102,7 +115,7 @@ def train(opt=parse_opt()):
     ]
 
     for epoch in range(1, opt.epochs+1):
-        draw = epoch % 10 == 0
+        draw = (epoch-1) % 10 == 0
         one_epoch(model, criterion, optimizers, train_dl, epoch, device)
         evaluate(model, test_dl, device, epoch, draw=draw, category=opt.category)
 
