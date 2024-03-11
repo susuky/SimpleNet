@@ -119,7 +119,7 @@ class Generator(nn.Module):
         
     def forward(self, x):
         if self.training:
-            x += torch.normal(0, self.std, x.shape).to(x.device)
+            x = x + torch.normal(0, self.std, x.shape).to(x.device)
         return x
     
     
