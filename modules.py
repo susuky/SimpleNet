@@ -159,10 +159,17 @@ class ComputeLoss:
         scores = discriminator(torch.cat([embedding, fake_embedding], dim=0))
         true_scores, fake_scores = torch.split(scores, nums, dim=0)
         
-        true_loss = torch.clip(-self.thr - true_scores, min=0)
+        # XXX: Note that loss function in Equation (3) in the paper should be:
+        # loss = (torch.clip(self.thr - true_scores, min=0) + 
+        #         torch.clip(-self.thr + fake_scores, min=0)
+        # and it may not work as intended.
+        true_loss = torch.clip(self.thr - true_scores, min=0)
         fake_loss = torch.clip(self.thr + fake_scores, min=0)
-        loss = true_loss.mean() + fake_loss.mean()
-        return loss
+        loss = (true_loss + fake_loss).mean()
+
+        p_true = (true_scores.detach() >= self.thr).float().mean()
+        p_fake = (fake_scores.detach() < -self.thr).float().mean()
+        return loss, p_true, p_fake
     
 
 class AnomalyMapGenerator(nn.Module):

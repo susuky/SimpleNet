@@ -65,8 +65,10 @@ def one_epoch(model, criterion, optimizers, dl, epoch, device):
         
         feats = model.backbone(xs)
         embedding = model.adaptor(feats)
-        loss = criterion(embedding, model.generator, model.discriminator)
+        loss, p_ture, p_fake = criterion(embedding, model.generator, model.discriminator)
         metric_monitor.update('Loss', loss.item())
+        metric_monitor.update('p_true', p_ture.item())
+        metric_monitor.update('p_fake', p_fake.item())
 
         loss.backward()
         for optimizer in optimizers:
