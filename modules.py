@@ -66,12 +66,13 @@ if DEBUG:
 
 
 class Adaptor(torch.nn.Module):
-    def __init__(self, h=384):
+    def __init__(self, h=1536, out_dims=None):
         super().__init__()
         self.h = h
+        self.out_dims = out_dims if out_dims is not None else h
         self.feature_pooler = torch.nn.AvgPool2d(3, 1, 1)
         self.bs, self.emb_size, self.height, self.width = None, None, None, None        
-        self.linear = torch.nn.Linear(self.h, self.h, bias=False)
+        self.linear = torch.nn.Linear(self.h, self.out_dims)
         
         for m in self.modules():
             if isinstance(m, torch.nn.Linear):
@@ -96,7 +97,8 @@ class Adaptor(torch.nn.Module):
         '''
         (BS, Embedding, H, W) -> (BS, H, W, Embedding)
         '''
-        self.bs, self.emb_size, self.height, self.width = embedding.shape
+        self.bs, self.emb_size, self.h0, self.w0 = embedding.shape
+        #return embedding.permute(0, 2, 3, 1)
         return embedding.permute(0, 2, 3, 1).reshape(-1, self.emb_size)    
     
     def forward(self, feats):
@@ -104,11 +106,12 @@ class Adaptor(torch.nn.Module):
         embedding = self.generate_embedding(feats)
         embedding = self.reshape_embedding(embedding)
         x = self.linear(embedding)
+        #x = embedding
         return x
 
 
 if DEBUG:
-    adaptor = Adaptor()
+    adaptor = Adaptor(backbone.out_dims)
     embedding = adaptor(feats)
     print('embedding shape: ', embedding.shape)
 
@@ -127,12 +130,13 @@ class Generator(nn.Module):
     
     
 class Discriminator(torch.nn.Module):
-    def __init__(self, h):
+    def __init__(self, h=1536, out_dims=None):
         super().__init__()
-        self.fc = torch.nn.Sequential(torch.nn.Linear(h, h),
-                                      torch.nn.BatchNorm1d(h),
+        self.out_dims = out_dims if out_dims is not None else h
+        self.fc = torch.nn.Sequential(torch.nn.Linear(h, self.out_dims),
+                                      #torch.nn.BatchNorm1d(self.out_dims),
                                       torch.nn.LeakyReLU(negative_slope=0.2, inplace=True),
-                                      torch.nn.Linear(h, 1, False))
+                                      torch.nn.Linear(self.out_dims, 1, False))
         for m in self.modules():
             if isinstance(m, torch.nn.Linear):
                 torch.nn.init.xavier_normal_(m.weight)
@@ -145,7 +149,7 @@ class Discriminator(torch.nn.Module):
 
 if DEBUG:
     generator = Generator()
-    discirminator = Discriminator(backbone.out_dims)
+    discirminator = Discriminator(adaptor.out_dims)
 
     new_embedding = generator(embedding)
     score = discirminator(new_embedding)
@@ -165,7 +169,8 @@ class ComputeLoss:
         assert (fake_embedding != embedding).any()
         true_loss = torch.clip(self.thr - true_scores, min=0)
         fake_loss = torch.clip(self.thr + fake_scores, min=0)
-        loss = (true_loss + fake_loss).mean()
+        #loss = (true_loss + fake_loss).mean()
+        loss = true_loss.mean() + fake_loss.mean()
         
         p_true = (true_scores.detach() >= self.thr).float().mean()
         p_fake = (fake_scores.detach() < -self.thr).float().mean()
@@ -196,9 +201,9 @@ class SimpleNet(nn.Module):
     def __init__(self, model_name='resnet18', layers=[2, 3], std=0.015, **kwargs):
         super(SimpleNet, self).__init__()
         self.backbone = Backbone(model_name, layers, **kwargs)
-        self.adaptor = Adaptor(self.backbone.out_dims)
+        self.adaptor = Adaptor(self.backbone.out_dims, 384)
         self.generator = Generator(std)
-        self.discriminator = Discriminator(self.backbone.out_dims)
+        self.discriminator = Discriminator(self.adaptor.out_dims, 384)
         self.anomaly_map_generator = AnomalyMapGenerator()
         # for anomaly_map localization
         self.reset_minmax()
@@ -225,8 +230,8 @@ class SimpleNet(nn.Module):
 
             anomaly_map = patch_scores.view(bs, 
                                             1, 
-                                            self.adaptor.height, 
-                                            self.adaptor.width)
+                                            self.adaptor.h0, 
+                                            self.adaptor.w0)
             anomaly_map = self.anomaly_map_generator(anomaly_map, 
                                                      img_size=(height, width))
         return anomaly_map, image_scores

@@ -17,6 +17,7 @@ def get_transforms(phase='train', img_size=(312, 312)):
             A.HorizontalFlip(p=0.5),
             A.VerticalFlip(p=0.5),
         ]
+        aug = []
     else:
         aug = []
 
