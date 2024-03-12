@@ -52,8 +52,13 @@ def evaluate(model, dl, device, epoch=None, draw=False, **kwargs):
 
         anomaly_maps, image_scores = model(xs, track=True)
         scores.extend(image_scores.cpu().numpy().tolist())
+    metrics = compute_metrics(np.array(scores), np.array(labels), None)
+    metric_monitor.update_dict(metrics)
+    model.threshold = metrics['threshold']
+    print(metric_monitor)
 
-        if draw:
+    if draw:
+        for i, (xs, ys, names) in enumerate(dl, 1):
             for img, path, anomaly_map in zip(xs, names, anomaly_maps):
                 path = Path(path)
                 stem = path.stem
@@ -62,14 +67,9 @@ def evaluate(model, dl, device, epoch=None, draw=False, **kwargs):
 
                 anomaly_map = anomaly_map.cpu().numpy()
                 anomaly_map = normalize(anomaly_map, model.min, model.max)
-                anomaly_map = (anomaly_map * 255).astype(np.uint8)
+                anomaly_map = ~ (anomaly_map * 255).astype(np.uint8)
                 anomaly_map = cv2.applyColorMap(anomaly_map, cv2.COLORMAP_JET)
                 cv2.imwrite(os.path.join(parent, f'{stem}-{epoch}-heatmap.jpg'), anomaly_map)
-
-    metrics = compute_metrics(np.array(scores), np.array(labels), None)
-    metric_monitor.update_dict(metrics)
-    model.threshold = metrics['threshold']
-    print(metric_monitor)
     return metric_monitor
 
 

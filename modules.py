@@ -26,7 +26,8 @@ class TimmFeatureExtractor(nn.Module):
                                                    out_indices=layers, 
                                                    **kwargs)
     def forward(self, x):
-        return self.feature_extractor(x)
+        with torch.no_grad():
+            return self.feature_extractor(x)
     
     @property
     def info(self):
@@ -161,14 +162,11 @@ class ComputeLoss:
         scores = discriminator(torch.cat([embedding, fake_embedding], dim=0))
         true_scores, fake_scores = torch.split(scores, nums, dim=0)
         
-        # XXX: Note that the loss function in Equation (7) in the paper should be:
-        # loss = (torch.clip(self.thr - true_scores, min=0) + 
-        #         torch.clip(-self.thr + fake_scores, min=0)
-        # and it may not work as intended.
+        assert (fake_embedding != embedding).any()
         true_loss = torch.clip(self.thr - true_scores, min=0)
         fake_loss = torch.clip(self.thr + fake_scores, min=0)
         loss = (true_loss + fake_loss).mean()
-
+        
         p_true = (true_scores.detach() >= self.thr).float().mean()
         p_fake = (fake_scores.detach() < -self.thr).float().mean()
         return loss, p_true, p_fake
@@ -231,7 +229,7 @@ class SimpleNet(nn.Module):
                                             self.adaptor.width)
             anomaly_map = self.anomaly_map_generator(anomaly_map, 
                                                      img_size=(height, width))
-        return -anomaly_map, image_scores
+        return anomaly_map, image_scores
     
 if DEBUG:
     simplenet = SimpleNet('efficientnet_b0', pretrained=True)
