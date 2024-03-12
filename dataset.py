@@ -12,17 +12,21 @@ DEBUG = __name__ == '__main__'
 
 def get_transforms(phase='train', img_size=(312, 312)):
 
+    r = 224/256
+    crop_size = [int(s * r) for s in img_size]
+    
     if phase == 'train':
-        aug = [
-            A.HorizontalFlip(p=0.5),
-            A.VerticalFlip(p=0.5),
-        ]
+        # aug = [
+        #     A.HorizontalFlip(p=0.5),
+        #     A.VerticalFlip(p=0.5),
+        # ]
         aug = []
     else:
         aug = []
 
     return A.Compose([
         A.Resize(*img_size),
+        A.CenterCrop(*crop_size),
         *aug,
         A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ToTensorV2(),
@@ -50,7 +54,6 @@ class MVTecADDataset(Dataset):
         name = self.names[index]
 
         x = self.transforms(image=x)['image']
-
         return x, y, name
 
     def __len__(self):
