@@ -61,20 +61,24 @@ def evaluate(model, dl, device, epoch=None, draw=False, track=False, **kwargs):
 
         if draw:
             for img, y, path, anomaly_map in zip(xs, ys, names, anomaly_maps):
-                label = 'good' if y == 0 else 'anomal'
+                path = Path(path)
+                label = path.parts[-2]
                 name = f'{Path(path).stem}-{label}'
                 img = image_tonumpy(img)
                 img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-                cv2.imwrite(os.path.join(parent, f'{name}.jpg'), img)
 
                 anomaly_map = anomaly_map.cpu().numpy()
                 anomaly_map = normalize(anomaly_map, model.min, model.max)
                 anomaly_map = ~ (anomaly_map * 255).astype(np.uint8)
                 #anomaly_map = (anomaly_map * 255).astype(np.uint8)
                 anomaly_map = cv2.applyColorMap(anomaly_map, cv2.COLORMAP_JET)
-                cv2.imwrite(os.path.join(parent, f'{name}-heatmap.jpg'), anomaly_map)
 
-    metrics = compute_metrics(np.array(scores), np.array(labels), 0.0)
+                img = np.hstack([img, anomaly_map])
+                cv2.imwrite(os.path.join(parent, f'{name}.jpg'), img)
+
+    scores = np.array(scores)
+    #scores = normalize(scores, model.min, model.max)
+    metrics = compute_metrics(scores, np.array(labels), None)
     metric_monitor.update_dict(metrics)
     model.threshold = metrics['threshold']
     print(metric_monitor)
