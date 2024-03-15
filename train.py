@@ -33,7 +33,7 @@ def parse_opt():
     return opt
 
 
-def evaluate(model, dl, device, epoch=None, draw=False, **kwargs):
+def evaluate(model, dl, device, epoch=None, draw=False, track=False, **kwargs):
     metric_monitor = MetricMonitor()
     model.eval()
 
@@ -43,34 +43,42 @@ def evaluate(model, dl, device, epoch=None, draw=False, **kwargs):
         if not os.path.exists(parent):
             os.makedirs(parent)
 
+    if track:
+        model.reset_minmax()
+        for xs, ys, names in dl:
+            xs = xs.to(device)
+            anomaly_maps, image_scores = model(xs, track=True)
+
     scores = []
     labels = []
-    model.reset_minmax()
+    print(f'score range: {model.max:.4f}, {model.min:.4f}')
     for i, (xs, ys, names) in enumerate(dl, 1):
         xs = xs.to(device)
         labels.extend(ys.numpy().tolist())
 
-        anomaly_maps, image_scores = model(xs, track=True)
+        anomaly_maps, image_scores = model(xs)
         scores.extend(image_scores.cpu().numpy().tolist())
-    metrics = compute_metrics(np.array(scores), np.array(labels), None)
-    metric_monitor.update_dict(metrics)
-    model.threshold = metrics['threshold']
-    print(metric_monitor)
 
-    if draw:
-        for i, (xs, ys, names) in enumerate(dl, 1):
-            for img, path, anomaly_map in zip(xs, names, anomaly_maps):
-                path = Path(path)
-                stem = path.stem
+        if draw:
+            for img, y, path, anomaly_map in zip(xs, ys, names, anomaly_maps):
+                label = 'good' if y == 0 else 'anomal'
+                name = f'{Path(path).stem}-{label}'
                 img = image_tonumpy(img)
                 img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-                cv2.imwrite(os.path.join(parent, f'{stem}-{epoch}.jpg'), img)
+                cv2.imwrite(os.path.join(parent, f'{name}.jpg'), img)
 
                 anomaly_map = anomaly_map.cpu().numpy()
                 anomaly_map = normalize(anomaly_map, model.min, model.max)
                 anomaly_map = ~ (anomaly_map * 255).astype(np.uint8)
+                #anomaly_map = (anomaly_map * 255).astype(np.uint8)
                 anomaly_map = cv2.applyColorMap(anomaly_map, cv2.COLORMAP_JET)
-                cv2.imwrite(os.path.join(parent, f'{stem}-{epoch}-heatmap.jpg'), anomaly_map)
+                cv2.imwrite(os.path.join(parent, f'{name}-heatmap.jpg'), anomaly_map)
+
+    metrics = compute_metrics(np.array(scores), np.array(labels), 0.0)
+    metric_monitor.update_dict(metrics)
+    model.threshold = metrics['threshold']
+    print(metric_monitor)
+
     return metric_monitor
 
 
@@ -111,16 +119,16 @@ def train(opt=parse_opt()):
 
     criterion = ComputeLoss()
     optimizers = [
-        torch.optim.AdamW(model.adaptor.parameters(), lr=1e-4, weight_decay=1e-5),
+        torch.optim.Adam(model.adaptor.parameters(), lr=1e-4, weight_decay=1e-5),
         torch.optim.Adam(model.discriminator.parameters(), lr=2e-4, weight_decay=1e-5),
     ]
 
     for epoch in range(1, opt.epochs+1):
         draw = (epoch-1) % 10 == 0
         one_epoch(model, criterion, optimizers, train_dl, epoch, device)
-        evaluate(model, test_dl, device, epoch, draw=draw, category=opt.category)
+        evaluate(model, test_dl, device, epoch, draw=draw, track=True, category=opt.category)
 
-    evaluate(model, test_dl, device, epoch='last', draw=True, category=opt.category)
+    evaluate(model, test_dl, device, epoch='last', draw=True, track=False, category=opt.category)
 
     model_path = f'models/{opt.category}.pth'
     #save_model(model, path=model_path)

@@ -75,7 +75,7 @@ class Adaptor(torch.nn.Module):
         self.linear = nn.Sequential(
             torch.nn.Linear(self.h, self.out_dims),
             #torch.nn.BatchNorm1d(self.out_dims),
-            torch.nn.Tanh()
+            #torch.nn.Tanh(),
         )
         
         for m in self.modules():
