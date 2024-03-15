@@ -51,7 +51,7 @@ class Backbone(TimmFeatureExtractor):
     @property
     def out_dims(self):
         return sum(self.channels)
-
+    
 
 if DEBUG:
     backbone = Backbone('resnet18', layers=[2, 3]) #'wide_resnet50_2'
@@ -66,17 +66,28 @@ if DEBUG:
 
 
 class Adaptor(torch.nn.Module):
-    def __init__(self, h=1536, out_dims=None):
+    def __init__(self, h=768, out_dims=None):
         super().__init__()
         self.h = h
         self.out_dims = out_dims if out_dims is not None else h
         self.feature_pooler = torch.nn.AvgPool2d(3, 1, 1)
         self.bs, self.emb_size, self.height, self.width = None, None, None, None        
-        self.linear = torch.nn.Linear(self.h, self.out_dims)
+        self.linear = nn.Sequential(
+            torch.nn.Linear(self.h, self.out_dims),
+            #torch.nn.BatchNorm1d(self.out_dims),
+            torch.nn.Tanh()
+        )
         
         for m in self.modules():
             if isinstance(m, torch.nn.Linear):
                 torch.nn.init.xavier_normal_(m.weight)
+
+    def patchify(self, x):
+        k, p, s = 3, 1, 1
+        unfold = F.unfold(x, kernel_size=k, padding=p, stride=s)
+        unfold = unfold.reshape(x.shape[0], x.shape[1], k, k, -1)
+        return unfold.permute(0, 4, 3, 1, 2)
+
                 
     def generate_embedding(self, features) -> torch.Tensor:
         '''Generate embedding from hierarchical feature map.
@@ -106,7 +117,6 @@ class Adaptor(torch.nn.Module):
         embedding = self.generate_embedding(feats)
         embedding = self.reshape_embedding(embedding)
         x = self.linear(embedding)
-        #x = embedding
         return x
 
 
@@ -134,7 +144,7 @@ class Discriminator(torch.nn.Module):
         super().__init__()
         self.out_dims = out_dims if out_dims is not None else h
         self.fc = torch.nn.Sequential(torch.nn.Linear(h, self.out_dims),
-                                      #torch.nn.BatchNorm1d(self.out_dims),
+                                      torch.nn.BatchNorm1d(self.out_dims),
                                       torch.nn.LeakyReLU(negative_slope=0.2, inplace=True),
                                       torch.nn.Linear(self.out_dims, 1, False))
         for m in self.modules():
@@ -201,9 +211,9 @@ class SimpleNet(nn.Module):
     def __init__(self, model_name='resnet18', layers=[2, 3], std=0.015, **kwargs):
         super(SimpleNet, self).__init__()
         self.backbone = Backbone(model_name, layers, **kwargs)
-        self.adaptor = Adaptor(self.backbone.out_dims, 384)
+        self.adaptor = Adaptor(self.backbone.out_dims)
         self.generator = Generator(std)
-        self.discriminator = Discriminator(self.adaptor.out_dims, 384)
+        self.discriminator = Discriminator(self.adaptor.out_dims)
         self.anomaly_map_generator = AnomalyMapGenerator()
         # for anomaly_map localization
         self.reset_minmax()
@@ -237,7 +247,8 @@ class SimpleNet(nn.Module):
         return anomaly_map, image_scores
     
 if DEBUG:
-    simplenet = SimpleNet('efficientnet_b0', pretrained=True)
+    #simplenet = SimpleNet('efficientnet_b0', pretrained=True)
+    simplenet = SimpleNet('resnet18', pretrained=True)
     x = torch.randn(1, 3, 224, 224)
     anomaly_map, image_scores = simplenet(x)
     assert anomaly_map.shape == (1, 224, 224)

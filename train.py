@@ -25,7 +25,7 @@ def parse_opt():
     parser.add_argument('--root', type=str, default='mvtecad_dataset', help='dataset root')
     parser.add_argument('--category', type=str, default='bottle', help='category')
     parser.add_argument('--model-path', type=str, default=f'./models/model.pth', help='model path')
-    parser.add_argument('--img-size', '--imgsz', nargs='+', type=int, default=[312, 312], help='inference size h,w')
+    parser.add_argument('--img-size', '--imgsz', nargs='+', type=int, default=[256, 256], help='inference size h,w')
     parser.add_argument('--bs', '--batch-size', type=int, default=4, help='batch size')
     parser.add_argument('--epochs', type=int, default=160, help='number of epochs')
     parser.add_argument('--seed', type=int, default=42, help='global random seed')
@@ -63,6 +63,7 @@ def evaluate(model, dl, device, epoch=None, draw=False, **kwargs):
                 path = Path(path)
                 stem = path.stem
                 img = image_tonumpy(img)
+                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
                 cv2.imwrite(os.path.join(parent, f'{stem}-{epoch}.jpg'), img)
 
                 anomaly_map = anomaly_map.cpu().numpy()
@@ -104,7 +105,7 @@ def train(opt=parse_opt()):
     train_ds = MVTecADDataset(opt.root, opt.category, 'train', opt.img_size)
     train_dl = torch.utils.data.DataLoader(train_ds, batch_size=opt.bs, num_workers=4, shuffle=True)
     test_ds = MVTecADDataset(opt.root, opt.category, 'test', opt.img_size)
-    test_dl = torch.utils.data.DataLoader(test_ds, batch_size=opt.bs, num_workers=4, shuffle=False)
+    test_dl = torch.utils.data.DataLoader(test_ds, batch_size=1, num_workers=4, shuffle=False)
 
     model = SimpleNet(opt.backbone, pretrained=True).to(device)
 
