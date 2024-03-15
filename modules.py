@@ -10,6 +10,11 @@ import torchvision.transforms as T
 DEBUG =  __name__ == '__main__'
 
 
+def init_weight(m):
+    if isinstance(m, (torch.nn.Linear, torch.nn.Conv2d)):
+        torch.nn.init.xavier_normal_(m.weight)
+
+
 class TimmFeatureExtractor(nn.Module):
     '''
     Note: Only cnn-based models are available
@@ -77,10 +82,7 @@ class Adaptor(torch.nn.Module):
             #torch.nn.BatchNorm1d(self.out_dims),
             #torch.nn.Tanh(),
         )
-        
-        for m in self.modules():
-            if isinstance(m, torch.nn.Linear):
-                torch.nn.init.xavier_normal_(m.weight)
+        self.apply(init_weight)
 
     def patchify(self, x):
         k, p, s = 3, 1, 1
@@ -143,13 +145,13 @@ class Discriminator(torch.nn.Module):
     def __init__(self, h=1536, out_dims=None):
         super().__init__()
         self.out_dims = out_dims if out_dims is not None else h
-        self.fc = torch.nn.Sequential(torch.nn.Linear(h, self.out_dims),
-                                      torch.nn.BatchNorm1d(self.out_dims),
-                                      torch.nn.LeakyReLU(negative_slope=0.2, inplace=True),
-                                      torch.nn.Linear(self.out_dims, 1, False))
-        for m in self.modules():
-            if isinstance(m, torch.nn.Linear):
-                torch.nn.init.xavier_normal_(m.weight)
+        self.fc = torch.nn.Sequential(
+            torch.nn.Linear(h, self.out_dims),
+            torch.nn.BatchNorm1d(self.out_dims),
+            torch.nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            torch.nn.Linear(self.out_dims, 1, False),
+        )
+        self.apply(init_weight)
 
     def forward(self, x):
         if self.training:
