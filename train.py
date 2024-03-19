@@ -45,14 +45,14 @@ def evaluate(model, dl, device, epoch=None, draw=False, track=False, **kwargs):
 
     if track:
         model.reset_minmax()
-        for xs, ys, names in dl:
+        for xs, ys, paths, masks in dl:
             xs = xs.to(device)
             anomaly_maps, image_scores = model(xs, track=True)
 
     scores = []
     labels = []
     print(f'score range: {model.max:.4f}, {model.min:.4f}')
-    for i, (xs, ys, names) in enumerate(dl, 1):
+    for i, (xs, ys, paths, masks) in enumerate(dl, 1):
         xs = xs.to(device)
         labels.extend(ys.numpy().tolist())
 
@@ -60,7 +60,7 @@ def evaluate(model, dl, device, epoch=None, draw=False, track=False, **kwargs):
         scores.extend(image_scores.cpu().numpy().tolist())
 
         if draw:
-            for img, y, path, anomaly_map in zip(xs, ys, names, anomaly_maps):
+            for img, y, path, anomaly_map in zip(xs, ys, paths, anomaly_maps):
                 path = Path(path)
                 label = path.parts[-2]
                 name = f'{Path(path).stem}-{label}'

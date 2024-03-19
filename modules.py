@@ -200,10 +200,10 @@ class ComputeLoss:
         )
 
         # assert (fake_embedding != embedding).any()
-        # true_loss = torch.clip(self.thr - true_scores, min=0)
-        # fake_loss = torch.clip(self.thr + fake_scores, min=0)
-        # #loss = (true_loss + fake_loss).mean()
-        # loss = true_loss.mean() + fake_loss.mean() + loss
+        true_loss = torch.clip(self.thr - true_scores, min=0)
+        fake_loss = torch.clip(self.thr + fake_scores, min=0)
+        #loss = (true_loss + fake_loss).mean()
+        loss = true_loss.mean() + fake_loss.mean() + loss
         
         p_true = (true_scores.detach() >= self.thr).float().mean()
         p_fake = (fake_scores.detach() < -self.thr).float().mean()
