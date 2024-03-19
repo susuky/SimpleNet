@@ -215,7 +215,7 @@ class SimpleNet(nn.Module):
         self.backbone = Backbone(model_name, layers, **kwargs)
         self.adaptor = Adaptor(self.backbone.out_dims)
         self.generator = Generator(std)
-        self.discriminator = Discriminator(self.adaptor.out_dims)
+        self.discriminator = Discriminator(self.adaptor.out_dims, 1024)
         self.anomaly_map_generator = AnomalyMapGenerator()
         # for anomaly_map localization
         self.reset_minmax()
