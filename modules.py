@@ -1,11 +1,11 @@
 
 import os
+import random
 import timm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.transforms as T
-
 
 DEBUG =  __name__ == '__main__'
 
@@ -132,12 +132,25 @@ class Generator(nn.Module):
     def __init__(self, std=0.015):
         super(Generator, self).__init__()
         self.std = std
+        # self.s = 0.01
+        # self.min = 0.03 + self.s
+        # self.max = 0.03 - self.s
+
+    def get_random_std(self):
+        return random.uniform(self.min, self.max)
         
     def forward(self, x):
         if self.training:
             # Note: If you use `x += torch.normal(0, self.std, x.shape)`,
             # it will affect the original embedding vector `x`.
             x = x + torch.normal(0, self.std, x.shape).to(x.device)
+            #x = x + torch.normal(0, self.get_random_std(), x.shape).to(x.device)
+
+            # outs = x.clone()
+            # size = outs.shape[1:]
+            # for i in range(len(outs)):
+            #     outs[i] += torch.normal(0, self.get_random_std(), size).to(x.device)
+            # return outs
         return x
     
     
@@ -156,7 +169,7 @@ class Discriminator(torch.nn.Module):
     def forward(self, x):
         if self.training:
             return self.fc(x)
-        return -self.fc(x)
+        return 1-self.fc(x).sigmoid()
     
 
 if DEBUG:
@@ -169,20 +182,28 @@ if DEBUG:
 
 
 class ComputeLoss:
-    def __init__(self, thr=0.5):
+    def __init__(self, thr=0.5, temperature=1.0):
         self.thr = thr
+        self.temperature = temperature
         
     def __call__(self, embedding, generator, discriminator):
         nums = len(embedding)
         fake_embedding = generator(embedding)
         scores = discriminator(torch.cat([embedding, fake_embedding], dim=0))
         true_scores, fake_scores = torch.split(scores, nums, dim=0)
-        
-        assert (fake_embedding != embedding).any()
-        true_loss = torch.clip(self.thr - true_scores, min=0)
-        fake_loss = torch.clip(self.thr + fake_scores, min=0)
-        #loss = (true_loss + fake_loss).mean()
-        loss = true_loss.mean() + fake_loss.mean()
+
+        true_labels = torch.ones_like(true_scores)
+        fake_labels = torch.zeros_like(fake_scores)
+        loss = (
+            F.binary_cross_entropy_with_logits(true_scores/self.temperature, true_labels) + 
+            F.binary_cross_entropy_with_logits(fake_scores/self.temperature, fake_labels)
+        )
+
+        # assert (fake_embedding != embedding).any()
+        # true_loss = torch.clip(self.thr - true_scores, min=0)
+        # fake_loss = torch.clip(self.thr + fake_scores, min=0)
+        # #loss = (true_loss + fake_loss).mean()
+        # loss = true_loss.mean() + fake_loss.mean() + loss
         
         p_true = (true_scores.detach() >= self.thr).float().mean()
         p_fake = (fake_scores.detach() < -self.thr).float().mean()
@@ -215,7 +236,7 @@ class SimpleNet(nn.Module):
         self.backbone = Backbone(model_name, layers, **kwargs)
         self.adaptor = Adaptor(self.backbone.out_dims)
         self.generator = Generator(std)
-        self.discriminator = Discriminator(self.adaptor.out_dims, 1024)
+        self.discriminator = Discriminator(self.adaptor.out_dims)
         self.anomaly_map_generator = AnomalyMapGenerator()
         # for anomaly_map localization
         self.reset_minmax()
