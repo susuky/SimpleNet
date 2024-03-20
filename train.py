@@ -25,7 +25,7 @@ def parse_opt():
     parser.add_argument('--root', type=str, default='mvtecad_dataset', help='dataset root')
     parser.add_argument('--category', type=str, default='bottle', help='category')
     parser.add_argument('--model-path', type=str, default=f'./models/model.pth', help='model path')
-    parser.add_argument('--img-size', '--imgsz', nargs='+', type=int, default=[256, 256], help='inference size h,w')
+    parser.add_argument('--img-size', '--imgsz', '--img-sz', '--image-size', nargs='+', type=int, default=[256, 256], help='inference size h,w')
     parser.add_argument('--bs', '--batch-size', type=int, default=4, help='batch size')
     parser.add_argument('--epochs', type=int, default=160, help='number of epochs')
     parser.add_argument('--seed', type=int, default=42, help='global random seed')
@@ -33,7 +33,7 @@ def parse_opt():
     return opt
 
 
-def evaluate(model, dl, device, epoch=None, draw=False, **kwargs):
+def evaluate(model, dl, device, epoch=None, draw=False, track=False, **kwargs):
     metric_monitor = MetricMonitor()
     model.eval()
 
@@ -42,6 +42,12 @@ def evaluate(model, dl, device, epoch=None, draw=False, **kwargs):
         parent = os.path.join('run', category, f'{epoch}')
         if not os.path.exists(parent):
             os.makedirs(parent)
+
+    if track:
+        model.reset_minmax()
+        for xs, ys, paths, masks in dl:
+            xs = xs.to(device)
+            anomaly_maps, image_scores = model(xs, track=True)
 
     scores = []
     labels = []
@@ -62,6 +68,7 @@ def evaluate(model, dl, device, epoch=None, draw=False, **kwargs):
                 img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
                 anomaly_map = anomaly_map.cpu().numpy()
+                #anomaly_map = normalize(anomaly_map, model.min, model.max)
                 anomaly_map = (anomaly_map * 255).clip(0, 255).astype(np.uint8)
                 anomaly_map = cv2.applyColorMap(anomaly_map, cv2.COLORMAP_JET)
 
@@ -91,6 +98,7 @@ def one_epoch(model, criterion, optimizers, dl, epoch, device):
         metric_monitor.update('Loss', loss.item())
         metric_monitor.update('p_true', p_ture.item())
         metric_monitor.update('p_fake', p_fake.item())
+        metric_monitor.update('std', model.generator.std.item())
 
         loss.backward()
         for optimizer in optimizers:
@@ -114,16 +122,19 @@ def train(opt=parse_opt()):
 
     criterion = ComputeLoss()
     optimizers = [
-        torch.optim.Adam(model.adaptor.parameters(), lr=1e-4, weight_decay=1e-5),
+        torch.optim.AdamW(model.adaptor.parameters(), lr=1e-4, weight_decay=1e-5),
         torch.optim.Adam(model.discriminator.parameters(), lr=2e-4, weight_decay=1e-5),
     ]
+
+    if [*model.generator.parameters()]:
+        optimizers.append(torch.optim.Adam(model.generator.parameters(), lr=1e-4, weight_decay=1e-5))
 
     for epoch in range(1, opt.epochs+1):
         draw = (epoch-1) % 10 == 0
         one_epoch(model, criterion, optimizers, train_dl, epoch, device)
-        evaluate(model, test_dl, device, epoch, draw=draw, category=opt.category)
+        evaluate(model, test_dl, device, epoch, draw=draw, track=True, category=opt.category)
 
-    evaluate(model, test_dl, device, epoch='last', draw=True, category=opt.category)
+    evaluate(model, test_dl, device, epoch='last', draw=True, track=False, category=opt.category)
 
     model_path = f'models/{opt.category}.pth'
     #save_model(model, path=model_path)

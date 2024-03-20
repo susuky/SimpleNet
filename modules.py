@@ -79,16 +79,10 @@ class Adaptor(torch.nn.Module):
         self.bs, self.emb_size, self.height, self.width = None, None, None, None        
         self.linear = nn.Sequential(
             torch.nn.Linear(self.h, self.out_dims),
-            #torch.nn.BatchNorm1d(self.out_dims),
-            #torch.nn.Tanh(),
+            torch.nn.BatchNorm1d(self.out_dims),
+            torch.nn.Tanh(),
         )
         self.apply(init_weight)
-
-    def patchify(self, x):
-        k, p, s = 3, 1, 1
-        unfold = F.unfold(x, kernel_size=k, padding=p, stride=s)
-        unfold = unfold.reshape(x.shape[0], x.shape[1], k, k, -1)
-        return unfold.permute(0, 4, 3, 1, 2)
 
     def generate_embedding(self, features) -> torch.Tensor:
         '''Generate embedding from hierarchical feature map.
@@ -128,28 +122,20 @@ if DEBUG:
 
 
 class Generator(nn.Module):
-    def __init__(self, std=0.015):
+    def __init__(self, std=1e-2, max_std=0.25, min_std=1e-4):
         super(Generator, self).__init__()
-        self.std = std
-        # self.s = 0.01
-        # self.min = 0.03 + self.s
-        # self.max = 0.03 - self.s
+        self.std = torch.nn.Parameter(torch.ones(1)*std, requires_grad=True)
+        #self.std = torch.FloatTensor([std])
+
+        self.max_std = max_std
+        self.min_std = min_std
 
     def get_random_std(self):
         return random.uniform(self.min, self.max)
         
     def forward(self, x):
         if self.training:
-            # Note: If you use `x += torch.normal(0, self.std, x.shape)`,
-            # it will affect the original embedding vector `x`.
-            x = x + torch.normal(0, self.std, x.shape).to(x.device)
-            #x = x + torch.normal(0, self.get_random_std(), x.shape).to(x.device)
-
-            # outs = x.clone()
-            # size = outs.shape[1:]
-            # for i in range(len(outs)):
-            #     outs[i] += torch.normal(0, self.get_random_std(), size).to(x.device)
-            # return outs
+            x = (x + torch.randn_like(x, device=x.device) * self.std.clip(self.min_std, self.max_std))
         return x
     
     
@@ -184,6 +170,22 @@ class ComputeLoss:
     def __init__(self, thr=0.5, temperature=1.0):
         self.thr = thr
         self.temperature = temperature
+
+    def l1_loss(self, true_scores, fake_scores):
+        true_loss = torch.clip(0 + true_scores, min=0, max=1)
+        fake_loss = torch.clip(1 - fake_scores, min=0, max=1)
+        #loss = true_loss.mean() + fake_loss.mean()
+        loss = (true_loss + fake_loss).mean()
+        return loss
+
+    def bce_loss(self, true_scores, fake_scores):
+        loss = (
+            F.binary_cross_entropy_with_logits(true_scores / self.temperature, 
+                                               torch.zeros_like(true_scores)) + 
+            F.binary_cross_entropy_with_logits(fake_scores / self.temperature, 
+                                               torch.ones_like(fake_scores))
+        )
+        return loss
         
     def __call__(self, embedding, generator, discriminator):
         nums = len(embedding)
@@ -191,17 +193,9 @@ class ComputeLoss:
         scores = discriminator(torch.cat([embedding, fake_embedding], dim=0))
         true_scores, fake_scores = torch.split(scores, nums, dim=0)
 
-        true_labels = torch.zeros_like(true_scores)
-        fake_labels = torch.ones_like(fake_scores)
-        loss = (
-            F.binary_cross_entropy_with_logits(true_scores/self.temperature, true_labels) + 
-            F.binary_cross_entropy_with_logits(fake_scores/self.temperature, fake_labels)
-        )
-
-        # assert (fake_embedding != embedding).any()
-        true_loss = torch.clip(0 + true_scores, min=0, max=1)
-        fake_loss = torch.clip(1 - fake_scores, min=0, max=1)
-        loss = (true_loss + fake_loss).mean() + loss
+        bce_loss = self.bce_loss(true_scores, fake_scores)
+        l1_loss = self.l1_loss(true_scores, fake_scores)
+        loss = bce_loss + l1_loss
         
         p_true = (true_scores.detach() < -self.thr).float().mean()
         p_fake = (fake_scores.detach() >= self.thr).float().mean()
@@ -219,7 +213,6 @@ class AnomalyMapGenerator(nn.Module):
         if img_size is not None:
             patch_scores = F.interpolate(patch_scores, size=tuple(img_size[:2]))
         anomaly_map = self.blur(patch_scores)
-        #anomaly_map = patch_scores
         anomaly_map = anomaly_map.mean(axis=1).squeeze(axis=1)
         return anomaly_map
     
@@ -230,7 +223,7 @@ class SimpleNet(nn.Module):
         Use TimmFeatureExtractor to get the feature map, 
         and only cnn-based models are available.
     '''
-    def __init__(self, model_name='resnet18', layers=[2, 3], std=0.015, **kwargs):
+    def __init__(self, model_name='resnet18', layers=[2, 3], std=0.01, **kwargs):
         super(SimpleNet, self).__init__()
         self.backbone = Backbone(model_name, layers, **kwargs)
         self.adaptor = Adaptor(self.backbone.out_dims)
@@ -249,13 +242,17 @@ class SimpleNet(nn.Module):
     def bs(self):
         return self.adaptor.bs
     
-    def forward(self, x):
+    def forward(self, x, track=False):
         with torch.no_grad():
             bs, _, height, width = x.shape
             x = self.backbone(x)
             embeddings = self.adaptor(x)                  # (bs*h*w, emb_size)
             patch_scores = self.discriminator(embeddings) # (bs*h*w, 1)
 
+            if track:  # For debugging, you'll hope output range would be close to [1, 0]
+                self.max = max(self.max, patch_scores.max().item())
+                self.min = min(self.min, patch_scores.min().item())
+                
             # compute image scores: Use max of patch scores as anomaly score
             image_scores = patch_scores.view(self.bs, -1).amax(axis=1)
 
