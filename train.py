@@ -33,7 +33,7 @@ def parse_opt():
     return opt
 
 
-def evaluate(model, dl, device, epoch=None, draw=False, track=False, **kwargs):
+def evaluate(model, dl, device, epoch=None, draw=False, **kwargs):
     metric_monitor = MetricMonitor()
     model.eval()
 
@@ -42,12 +42,6 @@ def evaluate(model, dl, device, epoch=None, draw=False, track=False, **kwargs):
         parent = os.path.join('run', category, f'{epoch}')
         if not os.path.exists(parent):
             os.makedirs(parent)
-
-    if track:
-        model.reset_minmax()
-        for xs, ys, paths, masks in dl:
-            xs = xs.to(device)
-            anomaly_maps, image_scores = model(xs, track=True)
 
     scores = []
     labels = []
@@ -68,16 +62,13 @@ def evaluate(model, dl, device, epoch=None, draw=False, track=False, **kwargs):
                 img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
                 anomaly_map = anomaly_map.cpu().numpy()
-                anomaly_map = normalize(anomaly_map, model.min, model.max)
-                anomaly_map = ~ (anomaly_map * 255).astype(np.uint8)
-                #anomaly_map = (anomaly_map * 255).astype(np.uint8)
+                anomaly_map = (anomaly_map * 255).clip(0, 255).astype(np.uint8)
                 anomaly_map = cv2.applyColorMap(anomaly_map, cv2.COLORMAP_JET)
 
                 img = np.hstack([img, anomaly_map])
                 cv2.imwrite(os.path.join(parent, f'{name}.jpg'), img)
 
     scores = np.array(scores)
-    #scores = normalize(scores, model.min, model.max)
     metrics = compute_metrics(scores, np.array(labels), None)
     metric_monitor.update_dict(metrics)
     model.threshold = metrics['threshold']
@@ -130,9 +121,9 @@ def train(opt=parse_opt()):
     for epoch in range(1, opt.epochs+1):
         draw = (epoch-1) % 10 == 0
         one_epoch(model, criterion, optimizers, train_dl, epoch, device)
-        evaluate(model, test_dl, device, epoch, draw=draw, track=True, category=opt.category)
+        evaluate(model, test_dl, device, epoch, draw=draw, category=opt.category)
 
-    evaluate(model, test_dl, device, epoch='last', draw=True, track=False, category=opt.category)
+    evaluate(model, test_dl, device, epoch='last', draw=True, category=opt.category)
 
     model_path = f'models/{opt.category}.pth'
     #save_model(model, path=model_path)

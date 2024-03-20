@@ -90,7 +90,6 @@ class Adaptor(torch.nn.Module):
         unfold = unfold.reshape(x.shape[0], x.shape[1], k, k, -1)
         return unfold.permute(0, 4, 3, 1, 2)
 
-                
     def generate_embedding(self, features) -> torch.Tensor:
         '''Generate embedding from hierarchical feature map.
 
@@ -169,7 +168,7 @@ class Discriminator(torch.nn.Module):
     def forward(self, x):
         if self.training:
             return self.fc(x)
-        return 1-self.fc(x).sigmoid()
+        return self.fc(x).sigmoid()
     
 
 if DEBUG:
@@ -192,21 +191,20 @@ class ComputeLoss:
         scores = discriminator(torch.cat([embedding, fake_embedding], dim=0))
         true_scores, fake_scores = torch.split(scores, nums, dim=0)
 
-        true_labels = torch.ones_like(true_scores)
-        fake_labels = torch.zeros_like(fake_scores)
+        true_labels = torch.zeros_like(true_scores)
+        fake_labels = torch.ones_like(fake_scores)
         loss = (
             F.binary_cross_entropy_with_logits(true_scores/self.temperature, true_labels) + 
             F.binary_cross_entropy_with_logits(fake_scores/self.temperature, fake_labels)
         )
 
         # assert (fake_embedding != embedding).any()
-        true_loss = torch.clip(self.thr - true_scores, min=0)
-        fake_loss = torch.clip(self.thr + fake_scores, min=0)
-        #loss = (true_loss + fake_loss).mean()
-        loss = true_loss.mean() + fake_loss.mean() + loss
+        true_loss = torch.clip(0 + true_scores, min=0, max=1)
+        fake_loss = torch.clip(1 - fake_scores, min=0, max=1)
+        loss = (true_loss + fake_loss).mean() + loss
         
-        p_true = (true_scores.detach() >= self.thr).float().mean()
-        p_fake = (fake_scores.detach() < -self.thr).float().mean()
+        p_true = (true_scores.detach() < -self.thr).float().mean()
+        p_fake = (fake_scores.detach() >= self.thr).float().mean()
         return loss, p_true, p_fake
     
 
@@ -221,6 +219,7 @@ class AnomalyMapGenerator(nn.Module):
         if img_size is not None:
             patch_scores = F.interpolate(patch_scores, size=tuple(img_size[:2]))
         anomaly_map = self.blur(patch_scores)
+        #anomaly_map = patch_scores
         anomaly_map = anomaly_map.mean(axis=1).squeeze(axis=1)
         return anomaly_map
     
@@ -250,17 +249,17 @@ class SimpleNet(nn.Module):
     def bs(self):
         return self.adaptor.bs
     
-    def forward(self, x, track=False):
+    def forward(self, x):
         with torch.no_grad():
             bs, _, height, width = x.shape
             x = self.backbone(x)
             embeddings = self.adaptor(x)                  # (bs*h*w, emb_size)
             patch_scores = self.discriminator(embeddings) # (bs*h*w, 1)
-            image_scores = patch_scores.view(self.bs, -1).amax(axis=1)
-            if track:
-                self.max = max(self.max, image_scores.max().item())
-                self.min = min(self.min, image_scores.min().item())
 
+            # compute image scores: Use max of patch scores as anomaly score
+            image_scores = patch_scores.view(self.bs, -1).amax(axis=1)
+
+            # compute anomaly map
             anomaly_map = patch_scores.view(bs, 
                                             1, 
                                             self.adaptor.h0, 

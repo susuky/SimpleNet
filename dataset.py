@@ -34,10 +34,6 @@ def get_transforms(phase='train', img_size=(312, 312)):
     ])
 
 
-class NullData: 
-    def __getitem__(self, index): self
-    def append(self, x): pass
-
 
 class MVTecADDataset(Dataset):
     def __init__(self, 
@@ -96,7 +92,7 @@ class MVTecADDataset(Dataset):
                     
             x = cv2.imread(path.as_posix())
             x = cv2.cvtColor(x, cv2.COLOR_BGR2RGB)
-            y = int(path.parent.name != 'good')
+            y = int(label != 'good')
             path = path.as_posix()
 
             xs.append(x)
