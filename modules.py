@@ -7,6 +7,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.transforms as T
 
+from torch import Tensor
+from typing import List
+
 DEBUG =  __name__ == '__main__'
 
 
@@ -170,10 +173,10 @@ class ComputeLoss:
         self.temperature = temperature
 
     def l1_loss(self, true_scores, fake_scores):
-        true_loss = torch.clip(0 + true_scores, min=0, max=1).mean()
-        fake_loss = torch.clip(1 - fake_scores, min=0, max=1).mean()
+        true_loss = torch.clip(0 + true_scores, min=0, max=1)
+        fake_loss = torch.clip(1 - fake_scores, min=0, max=1)
         # #loss = true_loss.mean() + fake_loss.mean()
-        loss = (true_loss + fake_loss)
+        loss = (true_loss.mean() + fake_loss.mean())
 
         # true_loss = true_scores.max(dim=1)[0].clip(0, 1)
         # fake_loss = 1 - fake_scores.min(dim=1)[0].clip(0, 1)
@@ -197,8 +200,8 @@ class ComputeLoss:
 
         bce_loss = self.bce_loss(true_scores, fake_scores)
         l1_loss = self.l1_loss(true_scores, fake_scores)
-        #loss = bce_loss + l1_loss
-        loss = l1_loss
+        loss = bce_loss + l1_loss
+        #loss = l1_loss
         
         p_true = (true_scores.detach() < -self.thr).float().mean()
         p_fake = (fake_scores.detach() >= self.thr).float().mean()
@@ -210,13 +213,47 @@ class AnomalyMapGenerator(nn.Module):
         super(AnomalyMapGenerator, self).__init__()
         self.ks = 2 * int(4.0 * sigma + 0.5) + 1
         self.sigma = 4.0
-        self.blur = T.GaussianBlur(self.ks, self.sigma)
+        self.blur = self.get_gaussian_kernel2d(
+            kernel_size=[self.ks, self.ks], 
+            sigma=[self.sigma, self.sigma]
+        )
+    
+    def _get_gaussian_kernel1d(
+            self, 
+            kernel_size: int, 
+            sigma: float
+        ) -> Tensor:
+        ksize_half = (kernel_size - 1) * 0.5
+        x = torch.linspace(-ksize_half, ksize_half, steps=kernel_size)
+        pdf = torch.exp(-0.5 * (x / sigma).pow(2))
+        kernel1d = pdf / pdf.sum()
+        return kernel1d
+
+    def _get_gaussian_kernel2d(
+        self,
+        kernel_size: List[int], 
+        sigma: List[float]
+    ) -> Tensor:
+        kernel1d_x = self._get_gaussian_kernel1d(kernel_size[0], sigma[0])
+        kernel1d_y = self._get_gaussian_kernel1d(kernel_size[1], sigma[1])
+        kernel2d = torch.mm(kernel1d_y[:, None], kernel1d_x[None, :])
+        return kernel2d
+    
+    def get_gaussian_kernel2d(
+        self,
+        kernel_size: List[int],
+        sigma: List[float],
+    ):
+        weight = self._get_gaussian_kernel2d(kernel_size, sigma)[None, None] # [1, 1, ks, ks]
+        conv = nn.Conv2d(1, 1, kernel_size=kernel_size, padding=kernel_size[0] // 2, bias=False)
+        conv.weight = nn.Parameter(weight, requires_grad=False)
+        return conv
         
     def forward(self, patch_scores, img_size=None):
         if img_size is not None:
             patch_scores = F.interpolate(patch_scores, size=tuple(img_size[:2]))
-        #anomaly_map = self.blur(patch_scores)
-        anomaly_map = patch_scores
+        anomaly_map = self.blur(patch_scores)
+        #anomaly_map = patch_scores
         anomaly_map = anomaly_map.mean(axis=1).squeeze(axis=1)
         return anomaly_map
     
