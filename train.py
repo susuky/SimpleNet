@@ -76,7 +76,7 @@ def evaluate(model, dl, device, epoch=None, draw=False, track=False, **kwargs):
                 cv2.imwrite(os.path.join(parent, f'{name}.jpg'), img)
 
     scores = np.array(scores)
-    metrics = compute_metrics(scores, np.array(labels), None)
+    metrics = compute_metrics(scores, np.array(labels), 0.5)
     metric_monitor.update_dict(metrics)
     model.threshold = metrics['threshold']
     print(metric_monitor)
@@ -122,11 +122,11 @@ def train(opt=parse_opt()):
 
     criterion = ComputeLoss()
     optimizers = [
-        torch.optim.AdamW(model.adaptor.parameters(), lr=1e-4, weight_decay=1e-5),
+        #torch.optim.AdamW(model.adaptor.parameters(), lr=1e-4, weight_decay=1e-5),
         torch.optim.Adam(model.discriminator.parameters(), lr=2e-4, weight_decay=1e-5),
     ]
 
-    if [*model.generator.parameters()]:
+    if model.generator.trainable:
         optimizers.append(torch.optim.Adam(model.generator.parameters(), lr=1e-4, weight_decay=1e-5))
 
     for epoch in range(1, opt.epochs+1):

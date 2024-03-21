@@ -79,8 +79,8 @@ class Adaptor(torch.nn.Module):
         self.bs, self.emb_size, self.height, self.width = None, None, None, None        
         self.linear = nn.Sequential(
             torch.nn.Linear(self.h, self.out_dims),
-            torch.nn.BatchNorm1d(self.out_dims),
-            torch.nn.Tanh(),
+            # torch.nn.BatchNorm1d(self.out_dims),
+            # torch.nn.Tanh(),
         )
         self.apply(init_weight)
 
@@ -122,17 +122,15 @@ if DEBUG:
 
 
 class Generator(nn.Module):
-    def __init__(self, std=1e-2, max_std=0.25, min_std=1e-4):
+    def __init__(self, std=0.015, max_std=0.25, min_std=1e-4, trainable=True):
         super(Generator, self).__init__()
-        self.std = torch.nn.Parameter(torch.ones(1)*std, requires_grad=True)
-        #self.std = torch.FloatTensor([std])
-
+        self.trainable = trainable
+        requires_grad = trainable
+        self.std = torch.nn.Parameter(torch.FloatTensor([std]), 
+                                      requires_grad=requires_grad)
         self.max_std = max_std
         self.min_std = min_std
 
-    def get_random_std(self):
-        return random.uniform(self.min, self.max)
-        
     def forward(self, x):
         if self.training:
             x = (x + torch.randn_like(x, device=x.device) * self.std.clip(self.min_std, self.max_std))
@@ -167,15 +165,19 @@ if DEBUG:
 
 
 class ComputeLoss:
-    def __init__(self, thr=0.5, temperature=1.0):
+    def __init__(self, thr=0.5, temperature=0.5):
         self.thr = thr
         self.temperature = temperature
 
     def l1_loss(self, true_scores, fake_scores):
-        true_loss = torch.clip(0 + true_scores, min=0, max=1)
-        fake_loss = torch.clip(1 - fake_scores, min=0, max=1)
-        #loss = true_loss.mean() + fake_loss.mean()
-        loss = (true_loss + fake_loss).mean()
+        true_loss = torch.clip(0 + true_scores, min=0, max=1).mean()
+        fake_loss = torch.clip(1 - fake_scores, min=0, max=1).mean()
+        # #loss = true_loss.mean() + fake_loss.mean()
+        loss = (true_loss + fake_loss)
+
+        # true_loss = true_scores.max(dim=1)[0].clip(0, 1)
+        # fake_loss = 1 - fake_scores.min(dim=1)[0].clip(0, 1)
+        # loss = (true_loss + fake_loss).mean()
         return loss
 
     def bce_loss(self, true_scores, fake_scores):
@@ -195,7 +197,8 @@ class ComputeLoss:
 
         bce_loss = self.bce_loss(true_scores, fake_scores)
         l1_loss = self.l1_loss(true_scores, fake_scores)
-        loss = bce_loss + l1_loss
+        #loss = bce_loss + l1_loss
+        loss = l1_loss
         
         p_true = (true_scores.detach() < -self.thr).float().mean()
         p_fake = (fake_scores.detach() >= self.thr).float().mean()
@@ -212,7 +215,8 @@ class AnomalyMapGenerator(nn.Module):
     def forward(self, patch_scores, img_size=None):
         if img_size is not None:
             patch_scores = F.interpolate(patch_scores, size=tuple(img_size[:2]))
-        anomaly_map = self.blur(patch_scores)
+        #anomaly_map = self.blur(patch_scores)
+        anomaly_map = patch_scores
         anomaly_map = anomaly_map.mean(axis=1).squeeze(axis=1)
         return anomaly_map
     
