@@ -3,14 +3,21 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Notebooks
 *.ipynb
+
+# Debug files
+debug*
 
 # Dataset
 mvtecad_dataset/
 run/
 
-# Model
+# Models
 models/
+*.onnx
+*.engine
+*.pth
 
 # C extensions
 *.so
