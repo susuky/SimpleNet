@@ -275,24 +275,31 @@ class SimpleNet(nn.Module):
         self.reset_minmax()
         self.threshold = 0.1
 
-    def reset_minmax(self):
-        self.max = float('-inf')
-        self.min = float('inf')
-
     @property
     def bs(self):
         return self.adaptor.bs
+
+    def reset_minmax(self):
+        self.max = float('-inf')
+        self.min = float('inf')
     
-    def forward(self, x, track=False):
+    def track_minmax(self, x):
+        '''
+        For debugging, you'll hope output range would be close to [1, 0]
+        '''
+        with torch.no_grad():
+            x = self.backbone(x)
+            embeddings = self.adaptor(x)                  # (bs*h*w, emb_size)
+            patch_scores = self.discriminator(embeddings) # (bs*h*w, 1)
+        self.max = max(self.max, patch_scores.max().item())
+        self.min = min(self.min, patch_scores.min().item())
+
+    def forward(self, x):
         with torch.no_grad():
             bs, _, height, width = x.shape
             x = self.backbone(x)
             embeddings = self.adaptor(x)                  # (bs*h*w, emb_size)
             patch_scores = self.discriminator(embeddings) # (bs*h*w, 1)
-
-            if track:  # For debugging, you'll hope output range would be close to [1, 0]
-                self.max = max(self.max, patch_scores.max().item())
-                self.min = min(self.min, patch_scores.min().item())
                 
             # compute image scores: Use max of patch scores as anomaly score
             image_scores = patch_scores.view(self.bs, -1).amax(axis=1)

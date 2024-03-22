@@ -45,9 +45,9 @@ def evaluate(model, dl, device, epoch=None, draw=False, track=False, **kwargs):
 
     if track:
         model.reset_minmax()
-        for xs, ys, paths, masks in dl:
+        for xs, *_ in dl:
             xs = xs.to(device)
-            anomaly_maps, image_scores = model(xs, track=True)
+            model.track_minmax(xs)
 
     scores = []
     labels = []
