@@ -9,7 +9,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 from dataset import MVTecADDataset
-from modules import ComputeLoss, SimpleNet, save_model
+from modules import ComputeLoss, SimpleNet, save_model, has_trainable_params
 from utils import (
     seed_everything, 
     MetricMonitor, 
@@ -98,7 +98,11 @@ def one_epoch(model, criterion, optimizers, dl, epoch, device):
         metric_monitor.update('Loss', loss.item())
         metric_monitor.update('p_true', p_ture.item())
         metric_monitor.update('p_fake', p_fake.item())
-        metric_monitor.update('std', model.generator.std.item())
+
+        if model.generator.trainable:
+            for name, param in model.generator.named_parameters():
+                name = name[name.rfind('.')+1:]
+                metric_monitor.update(name, param.item())
 
         loss.backward()
         for optimizer in optimizers:
@@ -114,21 +118,34 @@ def train(opt=parse_opt()):
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     train_ds = MVTecADDataset(opt.root, opt.category, 'train', opt.img_size)
-    train_dl = torch.utils.data.DataLoader(train_ds, batch_size=opt.bs, num_workers=4, shuffle=True)
+    train_dl = torch.utils.data.DataLoader(train_ds, 
+                                           batch_size=opt.bs, 
+                                           num_workers=4, 
+                                           shuffle=True)
     test_ds = MVTecADDataset(opt.root, opt.category, 'test', opt.img_size)
-    test_dl = torch.utils.data.DataLoader(test_ds, batch_size=1, num_workers=4, shuffle=False)
+    test_dl = torch.utils.data.DataLoader(test_ds, 
+                                          batch_size=1, 
+                                          num_workers=4, 
+                                          shuffle=False)
 
     model = SimpleNet(opt.backbone, pretrained=True).to(device)
 
     criterion = ComputeLoss()
-    optimizers = [
-        #torch.optim.AdamW(model.adaptor.parameters(), lr=1e-4, weight_decay=1e-5),
-        torch.optim.Adam(model.discriminator.parameters(), lr=2e-4, weight_decay=1e-5),
-    ]
+    optimizers = []
 
-    if model.generator.trainable:
-        optimizers.append(torch.optim.Adam(model.generator.parameters(), lr=1e-4, weight_decay=1e-5))
-
+    if has_trainable_params(model.adaptor):
+        optimizers.append(
+            torch.optim.Adam(model.adaptor.parameters(), lr=1e-4, weight_decay=1e-5)
+        )
+    if has_trainable_params(model.generator):
+        optimizers.append(
+            torch.optim.Adam(model.generator.parameters(), lr=1e-4, weight_decay=1e-5)
+        )
+    if has_trainable_params(model.discriminator):
+        optimizers.append(
+            torch.optim.Adam(model.discriminator.parameters(), lr=2e-4, weight_decay=1e-5)
+        )
+        
     for epoch in range(1, opt.epochs+1):
         draw = (epoch-1) % 10 == 0
         one_epoch(model, criterion, optimizers, train_dl, epoch, device)

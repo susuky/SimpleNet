@@ -10,6 +10,9 @@ import torchvision.transforms as T
 from torch import Tensor
 from typing import List
 
+from noise_distribution import NoiseDistribution
+
+
 DEBUG =  __name__ == '__main__'
 
 
@@ -82,7 +85,7 @@ class Adaptor(torch.nn.Module):
         self.bs, self.emb_size, self.height, self.width = None, None, None, None        
         self.linear = nn.Sequential(
             torch.nn.Linear(self.h, self.out_dims),
-            # torch.nn.BatchNorm1d(self.out_dims),
+            torch.nn.BatchNorm1d(self.out_dims),
             # torch.nn.Tanh(),
         )
         self.apply(init_weight)
@@ -124,22 +127,21 @@ if DEBUG:
     print('embedding shape: ', embedding.shape)
 
 
-class Generator(nn.Module):
-    def __init__(self, std=0.015, max_std=0.25, min_std=1e-4, trainable=True):
+
+class Generator(nn.Module):  
+    def __init__(self, method='uniformstd', trainable=True, **kwargs):
         super(Generator, self).__init__()
+        assert method in ['uniform', 'uniformstd', 'normal', 'constant']
+        self.method = method
         self.trainable = trainable
-        requires_grad = trainable
-        self.std = torch.nn.Parameter(torch.FloatTensor([std]), 
-                                      requires_grad=requires_grad)
-        self.max_std = max_std
-        self.min_std = min_std
+        self.dist = NoiseDistribution(method=method, trainable=trainable, **kwargs)
 
     def forward(self, x):
         if self.training:
-            x = (x + torch.randn_like(x, device=x.device) * self.std.clip(self.min_std, self.max_std))
+            x = x + self.dist.rsample(x.shape, x.device)
         return x
-    
-    
+
+
 class Discriminator(torch.nn.Module):
     def __init__(self, h=1536, out_dims=None):
         super().__init__()
@@ -264,11 +266,11 @@ class SimpleNet(nn.Module):
         Use TimmFeatureExtractor to get the feature map, 
         and only cnn-based models are available.
     '''
-    def __init__(self, model_name='resnet18', layers=[2, 3], std=0.01, **kwargs):
+    def __init__(self, model_name='resnet18', layers=[2, 3], std=0.015, **kwargs):
         super(SimpleNet, self).__init__()
         self.backbone = Backbone(model_name, layers, **kwargs)
         self.adaptor = Adaptor(self.backbone.out_dims)
-        self.generator = Generator(std)
+        self.generator = Generator(std=std)
         self.discriminator = Discriminator(self.adaptor.out_dims)
         self.anomaly_map_generator = AnomalyMapGenerator()
         # for anomaly_map localization
@@ -320,6 +322,10 @@ if DEBUG:
     anomaly_map, image_scores = simplenet(x)
     assert anomaly_map.shape == (1, 224, 224)
     assert image_scores.shape == (1,)
+
+
+def has_trainable_params(model):
+    return any(p.requires_grad for p in model.parameters())
 
 
 def save_model(model, path='models/model.pth'):
