@@ -48,6 +48,20 @@ def seed_everything(seed=42):
             )
 
 
+def get_optimal_threshold(model, dl, device, percentile=100):
+    model.eval()
+    maps = []
+    for xs, *_ in dl:
+        xs = xs.to(device)
+        anomaly_maps, image_scores = model(xs)
+        maps.append(anomaly_maps.cpu().numpy())
+    
+    maps = np.concatenate(maps, axis=0)
+    thresholds = np.percentile(maps, range(101))
+    threshold = thresholds[percentile]
+    return threshold, thresholds
+
+
 def compute_metrics(outputs: np.ndarray, 
                     targets: np.ndarray, 
                     threshold: float = 0.1) -> dict:
@@ -63,6 +77,8 @@ def compute_metrics(outputs: np.ndarray,
         metrics[f'{prefix}PRAUC'] = sklearn.metrics.auc(recalls, precisions)
 
         if threshold is None:
+            # Compute the optimal threshold using testing set or validation set
+            # Note: This implementation is from original paper
             # Note: This threshold may not be within 0 to 1
             f1_scores =  (2 * precisions * recalls) / (precisions + recalls + 1e-10)
             threshold = thresholds[f1_scores.argmax()]

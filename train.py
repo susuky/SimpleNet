@@ -17,6 +17,7 @@ from utils import (
     image_tonumpy, 
     compute_metrics, 
     normalize,
+    get_optimal_threshold
 )
 
 
@@ -34,7 +35,7 @@ def parse_opt():
     return opt
 
 
-def evaluate(model, dl, device, epoch=None, draw=False, track=False, **kwargs):
+def evaluate(model, dl, device, epoch=None, draw=False, track=False, threshold=0.5, **kwargs):
     metric_monitor = MetricMonitor()
     model.eval()
 
@@ -58,11 +59,13 @@ def evaluate(model, dl, device, epoch=None, draw=False, track=False, **kwargs):
     for i, (xs, ys, paths, masks) in enumerate(dl, 1):
         xs = xs.to(device)
         labels.extend(ys.numpy().tolist())
-        masks_gt.append(masks.numpy())
 
         anomaly_maps, image_scores = model(xs)
         scores.extend(image_scores.cpu().numpy().tolist())
-        maps.append(anomaly_maps.cpu().numpy())
+
+        if kwargs.get('comput_pixelwise', False):
+            masks_gt.append(masks.numpy())
+            maps.append(anomaly_maps.cpu().numpy())
 
         if draw:
             for img, y, path, anomaly_map, mask in zip(xs, ys, paths, anomaly_maps, masks):
@@ -85,12 +88,12 @@ def evaluate(model, dl, device, epoch=None, draw=False, track=False, **kwargs):
                 cv2.imwrite(os.path.join(parent, f'{name}.jpg'), img)
 
     scores = np.array(scores)
-    metrics = compute_metrics(scores, np.array(labels), 0.5)
+    metrics = compute_metrics(scores, np.array(labels), threshold)
     metric_monitor.update_dict(metrics)
     model.threshold = metrics['threshold']
 
     # calculate pixel level metrics (XXX: it takes time to compute these metrics)
-    if 1: 
+    if kwargs.get('comput_pixelwise', False): 
         masks_gt = np.concatenate(masks_gt, axis=0)
         maps = np.concatenate(maps, axis=0)
         pixel_level_metrics = compute_metrics(maps, masks_gt)
@@ -161,7 +164,15 @@ def train(opt=parse_opt()):
     for epoch in range(1, opt.epochs+1):
         # Callback: before_epoch
         one_epoch(model, criterion, optimizers, train_dl, epoch, device)
-        metric_monitor = evaluate(model, test_dl, device, epoch, draw=(epoch-1) % 10 == 0, track=True, category=opt.category)
+        threshold, _ = get_optimal_threshold(model, train_dl, device)
+        metric_monitor = evaluate(model, 
+                                  test_dl, 
+                                  device, 
+                                  epoch, 
+                                  draw=(epoch-1) % 10 == 0, 
+                                  threshold=threshold, 
+                                  track=True, 
+                                  category=opt.category)
 
         # Callback: after_epoch
         metrics = metric_monitor.get_metrics()
