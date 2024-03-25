@@ -328,7 +328,8 @@ def has_trainable_params(model):
     return any(p.requires_grad for p in model.parameters())
 
 
-def save_model(model, path='models/model.pth'):
+def save_model(model, model_name='model.pth', root='models'):
+    path = os.path.join(root, model_name)
     if not os.path.exists(path):
         os.makedirs(path)
     
