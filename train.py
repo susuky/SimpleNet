@@ -52,16 +52,21 @@ def evaluate(model, dl, device, epoch=None, draw=False, track=False, **kwargs):
 
     scores = []
     labels = []
+    maps = []
+    masks_gt = []
     print(f'score range: {model.max:.4f}, {model.min:.4f}')
     for i, (xs, ys, paths, masks) in enumerate(dl, 1):
         xs = xs.to(device)
         labels.extend(ys.numpy().tolist())
+        masks_gt.append(masks.numpy())
+        print(masks.shape)
 
         anomaly_maps, image_scores = model(xs)
         scores.extend(image_scores.cpu().numpy().tolist())
+        maps.append(anomaly_maps.cpu().numpy())
 
         if draw:
-            for img, y, path, anomaly_map in zip(xs, ys, paths, anomaly_maps):
+            for img, y, path, anomaly_map, mask in zip(xs, ys, paths, anomaly_maps, masks):
                 path = Path(path)
                 label = path.parts[-2]
                 name = f'{Path(path).stem}-{label}'
@@ -73,13 +78,21 @@ def evaluate(model, dl, device, epoch=None, draw=False, track=False, **kwargs):
                 anomaly_map = (anomaly_map * 255).clip(0, 255).astype(np.uint8)
                 anomaly_map = cv2.applyColorMap(anomaly_map, cv2.COLORMAP_JET)
 
-                img = np.hstack([img, anomaly_map])
+                mask = mask.cpu().numpy()
+                mask = mask.astype(np.uint8)
+
+                img = np.hstack([img, anomaly_map, mask])
                 cv2.imwrite(os.path.join(parent, f'{name}.jpg'), img)
 
     scores = np.array(scores)
     metrics = compute_metrics(scores, np.array(labels), 0.5)
     metric_monitor.update_dict(metrics)
     model.threshold = metrics['threshold']
+
+    masks_gt = np.concatenate(masks_gt, axis=0)
+    maps = np.concatenate(maps, axis=0)
+    pixel_level_metrics = compute_metrics(maps, masks_gt, 0.5)
+    metric_monitor.update_dict(pixel_level_metrics)
     print(metric_monitor)
 
     return metric_monitor
@@ -124,8 +137,8 @@ def one_epoch(model, criterion, optimizers, dl, epoch, device):
 def train(opt=parse_opt()):
     # Callback: before_fit
     seed_everything(opt.seed)
-
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
     train_ds = MVTecADDataset(opt.root, opt.category, 'train', opt.img_size)
     train_dl = torch.utils.data.DataLoader(train_ds, 
                                            batch_size=opt.bs, 

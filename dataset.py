@@ -89,6 +89,7 @@ class MVTecADDataset(Dataset):
                     mask = cv2.resize(mask, self.img_size)
                 else:
                     mask = np.zeros_like(self.img_size, np.uint8)
+                    assert mask.shape == self.img_size
                     
             x = cv2.imread(path.as_posix())
             x = cv2.cvtColor(x, cv2.COLOR_BGR2RGB)
