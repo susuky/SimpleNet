@@ -174,15 +174,16 @@ class ComputeLoss:
         self.thr = thr
         self.temperature = temperature
 
+    def l1_min_max_loss(self, true_scores, fake_scores):
+        true_loss = 0 + true_scores.amax(dim=1).clip(0, 1)
+        fake_loss = 1 - fake_scores.amin(dim=1).clip(0, 1)
+        loss = true_loss.mean() + fake_loss.mean()        
+        return loss
+
     def l1_loss(self, true_scores, fake_scores):
         true_loss = torch.clip(0 + true_scores, min=0, max=1)
         fake_loss = torch.clip(1 - fake_scores, min=0, max=1)
-        # #loss = true_loss.mean() + fake_loss.mean()
-        loss = (true_loss.mean() + fake_loss.mean())
-
-        # true_loss = true_scores.max(dim=1)[0].clip(0, 1)
-        # fake_loss = 1 - fake_scores.min(dim=1)[0].clip(0, 1)
-        # loss = (true_loss + fake_loss).mean()
+        loss = true_loss.mean() + fake_loss.mean()
         return loss
 
     def bce_loss(self, true_scores, fake_scores):
@@ -202,7 +203,8 @@ class ComputeLoss:
 
         bce_loss = self.bce_loss(true_scores, fake_scores)
         l1_loss = self.l1_loss(true_scores, fake_scores)
-        loss = bce_loss + l1_loss
+        l1_min_max_loss = self.l1_min_max_loss(true_scores, fake_scores)
+        loss = bce_loss + l1_loss + l1_min_max_loss
         #loss = l1_loss
         
         p_true = (true_scores.detach() < -self.thr).float().mean()
@@ -275,7 +277,7 @@ class SimpleNet(nn.Module):
         self.anomaly_map_generator = AnomalyMapGenerator()
         # for anomaly_map localization
         self.reset_minmax()
-        self.threshold = 0.1
+        self.threshold = 0.25
 
     @property
     def bs(self):
@@ -315,6 +317,7 @@ class SimpleNet(nn.Module):
                                                      img_size=(height, width))
         return anomaly_map, image_scores
     
+
 if DEBUG:
     #simplenet = SimpleNet('efficientnet_b0', pretrained=True)
     simplenet = SimpleNet('resnet18', pretrained=True)
@@ -331,6 +334,10 @@ def has_trainable_params(model):
 class Optimizers:
     def __init__(self, model, lr=1e-4, wd=1e-5):
         self.optimizers = []
+        if has_trainable_params(model.backbone):
+            self.optimizers.append(
+                torch.optim.Adam(model.backbone.parameters(), lr=lr/10, weight_decay=wd)
+            )
         if has_trainable_params(model.adaptor):
             self.optimizers.append(
                 torch.optim.Adam(model.adaptor.parameters(), lr=lr, weight_decay=wd)
@@ -365,7 +372,6 @@ def save_model(model=None, state_dict=None, model_name='model.pth', root='models
     state_dict = {'model': model.state_dict(), 'metadata': {}}
     state_dict['metadata']['max'] = model.max
     state_dict['metadata']['min'] = model.min
-
     torch.save(state_dict, path)
 
 

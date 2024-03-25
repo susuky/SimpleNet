@@ -78,17 +78,19 @@ def evaluate(model, dl, device, epoch=None, draw=False, track=False, **kwargs):
                 anomaly_map = cv2.applyColorMap(anomaly_map, cv2.COLORMAP_JET)
 
                 mask = mask.cpu().numpy()
+                mask = (mask * 255).clip(0, 255).astype(np.uint8)
                 mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
 
                 img = np.hstack([img, anomaly_map, mask])
                 cv2.imwrite(os.path.join(parent, f'{name}.jpg'), img)
 
     scores = np.array(scores)
-    metrics = compute_metrics(scores, np.array(labels), None)
+    metrics = compute_metrics(scores, np.array(labels), 0.5)
     metric_monitor.update_dict(metrics)
     model.threshold = metrics['threshold']
 
-    if 1: # calculate pixel level metrics (it would become much slower)
+    # calculate pixel level metrics (XXX: it takes time to compute these metrics)
+    if 1: 
         masks_gt = np.concatenate(masks_gt, axis=0)
         maps = np.concatenate(maps, axis=0)
         pixel_level_metrics = compute_metrics(maps, masks_gt)
