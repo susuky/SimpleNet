@@ -86,10 +86,9 @@ class MVTecADDataset(Dataset):
                 mask_path = Path(self.mask_path, label, f'{path.stem}_mask.png')
                 if mask_path.exists():
                     mask = cv2.imread(mask_path.as_posix(), flags=0)
-                    mask = cv2.resize(mask, self.img_size)
+                    mask = cv2.resize(mask, self.img_size)//255
                 else:
-                    mask = np.zeros_like(self.img_size, np.uint8)
-                    assert mask.shape == self.img_size
+                    mask = np.zeros(self.img_size, np.uint8)
                     
             x = cv2.imread(path.as_posix())
             x = cv2.cvtColor(x, cv2.COLOR_BGR2RGB)

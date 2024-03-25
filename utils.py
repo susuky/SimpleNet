@@ -58,9 +58,10 @@ def compute_metrics(outputs: np.ndarray,
 
     metrics = {}
     metrics[f'{prefix}AUROC'] = sklearn.metrics.roc_auc_score(targets, outputs)
-    precisions, recalls, thresholds = sklearn.metrics.precision_recall_curve(targets, outputs)
-    metrics[f'{prefix}PRAUC'] = sklearn.metrics.auc(recalls, precisions)
     if prefix == 'I-':
+        precisions, recalls, thresholds = sklearn.metrics.precision_recall_curve(targets, outputs)
+        metrics[f'{prefix}PRAUC'] = sklearn.metrics.auc(recalls, precisions)
+
         if threshold is None:
             # Note: This threshold may not be within 0 to 1
             f1_scores =  (2 * precisions * recalls) / (precisions + recalls + 1e-10)
