@@ -77,7 +77,7 @@ def compute_metrics(outputs: np.ndarray,
         metrics[f'{prefix}PRAUC'] = sklearn.metrics.auc(recalls, precisions)
 
         if threshold is None:
-            # Compute the optimal threshold using testing set or validation set
+            # Compute the optimal threshold using testing set or validation set with ground truth
             # Note: This implementation is from original paper
             # Note: This threshold may not be within 0 to 1
             f1_scores =  (2 * precisions * recalls) / (precisions + recalls + 1e-10)

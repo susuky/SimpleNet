@@ -68,7 +68,7 @@ def evaluate(model, dl, device, epoch=None, draw=False, track=False, threshold=0
             maps.append(anomaly_maps.cpu().numpy())
 
         if draw:
-            for img, y, path, anomaly_map, mask in zip(xs, ys, paths, anomaly_maps, masks):
+            for img, path, anomaly_map, mask in zip(xs, paths, anomaly_maps, masks):
                 path = Path(path)
                 label = path.parts[-2]
                 name = f'{Path(path).stem}-{label}'
