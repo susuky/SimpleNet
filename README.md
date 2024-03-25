@@ -3,6 +3,13 @@ SimpleNet: Unofficial pytorch implementation of  SimpleNet: A Simple Network for
 
 ### Note: This repository is still in development.
 
+
+## Additional Features
+- [ ] 
+- [ ] 
+- [ ] 
+
+
 ## Latency
 - Batch size: 1
 - Precision: float32

@@ -6,7 +6,7 @@ import random
 import sklearn.metrics
 import sys
 
-from collections import defaultdict 
+from collections import defaultdict, OrderedDict
 
 
 def get_logger(filename='log', level='INFO', save=False, verbose=True, stream=sys.stderr):
@@ -109,12 +109,61 @@ class MetricMonitor:
         for metric_name, metric in metric_dict.items():
             self.metrics[metric_name].update(metric)
 
-    
+    def get_metrics(self):
+        metrics = {
+            metric_name: metric.avg 
+            for metric_name, metric in self.metrics.items()
+        }
+        return metrics
+
     def __str__(self):
         return ' | '.join([
-            f'{metric_name}: {metric.avg:.{self.float_precision}f}' 
-            for (metric_name, metric) in self.metrics.items()
+            f'{metric_name}: {metric:.{self.float_precision}f}' 
+            for (metric_name, metric) in self.get_metrics().items()
         ])
+    
+
+class EarlyStopping:
+    def __init__(self, patience=5, min_delta=0.001):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.counter = 0
+        self.best_score = None
+        self.is_stop = False
+
+    def step(self, score):
+        if self.best_score is None:
+            self.best_score = score
+        elif self.best_score - score < self.min_delta:
+            self.counter += 1
+            if self.counter >= self.patience:
+                self.is_stop = True
+        else:
+            self.best_score = score
+            self.counter = 0
+
+
+class ModelCheckpoint:
+    def __init__(self, min_delta=0.001):
+        self.best_score = None
+        self.best_epoch = 0
+        self.min_delta = min_delta
+        self.state_dict = None
+
+    def step(self, score, epoch, model):
+        if self.best_score is None or score - self.best_score > self.min_delta:
+            self.best_score = score
+            self.best_epoch = epoch
+            self.state_dict = self.get_state_dict(model)
+
+    def get_state_dict(self, model):
+        state_dict = {'model': OrderedDict(), 'metadata': {}}
+        for k, v in model.state_dict().items():
+            state_dict['model'][k] = v.cpu()
+
+        state_dict['metadata']['max'] = model.max
+        state_dict['metadata']['min'] = model.min
+        return state_dict
     
 
 def compute_anomaly_map(patch_score, sigma=4, image_size=None):

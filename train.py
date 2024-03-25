@@ -9,10 +9,11 @@ from pathlib import Path
 from tqdm import tqdm
 
 from dataset import MVTecADDataset
-from modules import ComputeLoss, SimpleNet, save_model, has_trainable_params
+from modules import ComputeLoss, SimpleNet, save_model, has_trainable_params, Optimizers
 from utils import (
     seed_everything, 
     MetricMonitor, 
+    ModelCheckpoint,
     image_tonumpy, 
     compute_metrics, 
     normalize,
@@ -90,30 +91,38 @@ def one_epoch(model, criterion, optimizers, dl, epoch, device):
 
     stream = tqdm(dl)
     for i, (xs, *_) in enumerate(stream, 1):
+        # prepare data
         xs = xs.to(device)
+        optimizers.zero_grad()
         
+        # forward
         feats = model.backbone(xs)
         embedding = model.adaptor(feats)
         loss, p_ture, p_fake = criterion(embedding, model.generator, model.discriminator)
+
+        # update metric
         metric_monitor.update('Loss', loss.item())
         metric_monitor.update('p_true', p_ture.item())
         metric_monitor.update('p_fake', p_fake.item())
-
         if model.generator.trainable:
             for name, param in model.generator.named_parameters():
                 name = name[name.rfind('.')+1:]
                 metric_monitor.update(name, param.item())
-
+        
+        # update model
         loss.backward()
-        for optimizer in optimizers:
-            optimizer.step()
-            optimizer.zero_grad()
-            stream.set_description(
-                f'Epoch: {epoch}. Train.      {metric_monitor}'
-            )
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
+        optimizers.step()
+
+        # update stream
+        stream.set_description(
+            f'Epoch: {epoch}. Train.      {metric_monitor}'
+        )
+    return metric_monitor
 
 
 def train(opt=parse_opt()):
+    # Callback: before_fit
     seed_everything(opt.seed)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -129,33 +138,38 @@ def train(opt=parse_opt()):
                                           shuffle=False)
 
     model = SimpleNet(opt.backbone, pretrained=True).to(device)
-
     criterion = ComputeLoss()
-    optimizers = []
+    optimizers = Optimizers(model, lr=1e-4, wd=1e-5)
 
-    if has_trainable_params(model.adaptor):
-        optimizers.append(
-            torch.optim.Adam(model.adaptor.parameters(), lr=1e-4, weight_decay=1e-5)
-        )
-    if has_trainable_params(model.generator):
-        optimizers.append(
-            torch.optim.Adam(model.generator.parameters(), lr=1e-4, weight_decay=1e-5)
-        )
-    if has_trainable_params(model.discriminator):
-        optimizers.append(
-            torch.optim.Adam(model.discriminator.parameters(), lr=2e-4, weight_decay=1e-5)
-        )
-        
+    model_checkpoint = ModelCheckpoint()
+    best_metrics = {'Accuracy': 0.0}
     for epoch in range(1, opt.epochs+1):
-        draw = (epoch-1) % 10 == 0
+        # Callback: before_epoch
         one_epoch(model, criterion, optimizers, train_dl, epoch, device)
-        evaluate(model, test_dl, device, epoch, draw=draw, track=True, category=opt.category)
+        metric_monitor = evaluate(model, test_dl, device, epoch, draw=(epoch-1) % 10 == 0, track=True, category=opt.category)
 
-    evaluate(model, test_dl, device, epoch='last', draw=True, track=False, category=opt.category)
+        # Callback: after_epoch
+        metrics = metric_monitor.get_metrics()
+        model_checkpoint.step(metrics['Accuracy'], epoch, model)
+        if metrics['Accuracy'] > best_metrics['Accuracy']:
+            best_metrics = metrics
 
-    model_path = f'models/{opt.category}.pth'
-    #save_model(model, path=model_path)
-    
+    metric_monitor_last = evaluate(model, test_dl, device, epoch='last', draw=True, track=False, category=opt.category)
+    last_metrics = metric_monitor_last.get_metrics()
+
+    # Callback: after_fit
+    # save model
+    save_model(state_dict=model_checkpoint.state_dict, model_name=f'{opt.category}-best.pth')
+    save_model(model=model, model_name=f'{opt.category}-last.pth')
+
+    # print result
+    def _set_precision(d, precision=4):
+        return ', '.join(
+            [f'{k}: {v:.{precision}f}' for k, v in d.items()]
+        )
+    print(f'best epoch: {model_checkpoint.best_epoch}, best score: {_set_precision(best_metrics)}')
+    print(f'last epoch: {epoch}, score: {_set_precision(last_metrics)}')
+    return best_metrics, last_metrics
 
 
 if __name__ == '__main__':

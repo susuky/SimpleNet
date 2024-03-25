@@ -129,9 +129,9 @@ if DEBUG:
 
 
 class Generator(nn.Module):  
-    def __init__(self, method='uniformstd', trainable=True, **kwargs):
+    def __init__(self, method='normalstd', trainable=True, **kwargs):
         super(Generator, self).__init__()
-        assert method in ['uniform', 'uniformstd', 'normal', 'constant']
+        assert method in ['uniform', 'uniformstd', 'normalstd', 'constantstd']
         self.method = method
         self.trainable = trainable
         self.dist = NoiseDistribution(method=method, trainable=trainable, **kwargs)
@@ -328,18 +328,44 @@ def has_trainable_params(model):
     return any(p.requires_grad for p in model.parameters())
 
 
-def save_model(model, model_name='model.pth', root='models'):
-    path = os.path.join(root, model_name)
-    if not os.path.exists(path):
-        os.makedirs(path)
+class Optimizers:
+    def __init__(self, model, lr=1e-4, wd=1e-5):
+        self.optimizers = []
+        if has_trainable_params(model.adaptor):
+            self.optimizers.append(
+                torch.optim.Adam(model.adaptor.parameters(), lr=lr, weight_decay=wd)
+            )
+        if has_trainable_params(model.generator):
+            self.optimizers.append(
+                torch.optim.Adam(model.generator.parameters(), lr=lr, weight_decay=wd)
+            )
+        if has_trainable_params(model.discriminator):
+            self.optimizers.append(
+                torch.optim.Adam(model.discriminator.parameters(), lr=lr*2, weight_decay=wd)
+            )
     
-    state_dict = {}
-    state_dict['model'] = model.state_dict()
+    def zero_grad(self):
+        for optim in self.optimizers:
+            optim.zero_grad()
+            
+    def step(self):
+        for optim in self.optimizers:
+            optim.step()
 
-    metadata = {}
-    metadata['max'] = model.max
-    metadata['min'] = model.min
-    state_dict['metadata'] = metadata
+
+def save_model(model=None, state_dict=None, model_name='model.pth', root='models'):
+    path = os.path.join(root, model_name)
+    if not os.path.exists(root):
+        os.makedirs(root)
+    
+    if state_dict is not None:
+        torch.save(state_dict, path)
+        return
+    
+    state_dict = {'model': model.state_dict(), 'metadata': {}}
+    state_dict['metadata']['max'] = model.max
+    state_dict['metadata']['min'] = model.min
+
     torch.save(state_dict, path)
 
 

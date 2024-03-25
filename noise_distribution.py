@@ -30,7 +30,7 @@ class UniformStd(nn.Module):
 
 
 class NormalStd(nn.Module): 
-    def __init__(self, mean=0.015, std=0.25, trainable=True):
+    def __init__(self, mean=0.0, std=0.015, trainable=True):
         super(NormalStd, self).__init__()
         self.trainable = trainable
         requires_grad = trainable
@@ -62,23 +62,22 @@ class NoiseDistribution(nn.Module):
             'uniform': noise is sampled from a uniform distribution
             The noise is sampled from Normal Distribution with different kind of standard deviation:
                 'uniformstd': Standard deviation is sampled from a uniform distribution 
-                'constant': Standard deviation is set to a constant value
-                'normal': Standard deviation is sampled from a normal distribution. The mean of standard deviation is set to `std`
+                'constantstd': Standard deviation is set to a constant value
+                'normalstd': Standard deviation is sampled from a normal distribution. The mean of standard deviation is set to `std`
 
-        std (float): Standard deviation.
-
-        upper_std (float): Upper bound of standard deviation.
-        lower_std (float): Lower bound of standard deviation.
-            if method = 'uniform': initial noise boundary will be [-0.5, 0.5]
-            if method = 'uniformstd': initial std boundary will be [1e-4, 0.1]
-            if method = 'normal': initial std boundary will be [1e-4, 0.25]
-        
-        trainable (bool): Whether the standard deviation is trainable.
-            if trainable:
-                method = 'uniform': The upper and lower bounds are trained.
-                method = 'uniformstd': The upper and lower  bounds of std are trained.
-                method = 'constant': The standard deviation is trained.
-                method = 'normal': The mean and std of standard deviation is trained.
+        1. method='uniform':
+            high (float): Upper bound of uniform distribution.  Default: 0.5
+            low (float): Lower bound of uniform distribution. Default: -0.5 
+        2. method='uniformstd':
+            max_std (float): Upper bound of std from uniform distribution.  Default: 0.1
+            min_std (float): Lower bound of std from uniform distribution. Default: 1e-4       
+        3. method='normalstd':
+            mean_std (float): Mean of std from normal distribution. Default: 0.0
+            std_std (float): std of std from normal distribution. Default: 0.015
+        4. method='constantstd':
+            std (float): Standard deviation. Default: 0.015
+            max_std (float): Upper bound of std, if std is learnable. Default: 0.25
+            min_std (float): Lower bound of std, if std is learnable. Default: 1e-4
     '''
     def __init__(self, method='uniformstd', trainable=True, **kwargs) -> None:
         super().__init__()
@@ -92,11 +91,11 @@ class NoiseDistribution(nn.Module):
             max_std = kwargs.get('max_std', 0.1)
             min_std = kwargs.get('min_std', 1e-4)
             self.dist = UniformStd(min_std, max_std, trainable=trainable)
-        elif method == 'normal':
+        elif method == 'normalstd':
             mean_std = kwargs.get('mean_std', 1e-4)
             std_std = kwargs.get('std_std', 0.25)
             self.dist = NormalStd(mean_std, std_std, trainable=trainable)
-        elif method == 'constant':
+        elif method == 'constantstd':
             max_std = kwargs.get('max_std', 0.25)
             min_std = kwargs.get('min_std', 1e-4)
             std = kwargs.get('std', 0.015)
