@@ -127,7 +127,6 @@ if DEBUG:
     print('embedding shape: ', embedding.shape)
 
 
-
 class Generator(nn.Module):  
     def __init__(self, method='normalstd', trainable=True, **kwargs):
         super(Generator, self).__init__()
@@ -260,7 +259,13 @@ class AnomalyMapGenerator(nn.Module):
         #anomaly_map = patch_scores
         anomaly_map = anomaly_map.mean(axis=1).squeeze(axis=1)
         return anomaly_map
-    
+
+
+def freeze_bn(model):
+    for m in model.modules():
+        if isinstance(m, (nn.BatchNorm1d, nn.BatchNorm2d)):
+            m.eval()
+
 
 class SimpleNet(nn.Module):
     '''
@@ -278,6 +283,11 @@ class SimpleNet(nn.Module):
         # for anomaly_map localization
         self.reset_minmax()
         self.threshold = 0.25
+
+    def train(self, mode=True):
+        super().train(mode)
+        freeze_bn(self.backbone)
+        return self
 
     @property
     def bs(self):

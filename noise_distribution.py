@@ -93,7 +93,7 @@ class NoiseDistribution(nn.Module):
             self.dist = UniformStd(min_std, max_std, trainable=trainable)
         elif method == 'normalstd':
             mean_std = kwargs.get('mean_std', 1e-4)
-            std_std = kwargs.get('std_std', 0.25)
+            std_std = kwargs.get('std_std', 0.015)
             self.dist = NormalStd(mean_std, std_std, trainable=trainable)
         elif method == 'constantstd':
             max_std = kwargs.get('max_std', 0.25)
