@@ -12,22 +12,22 @@ DEBUG = __name__ == '__main__'
 
 
 def get_transforms(phase='train', img_size=(312, 312)):
-    # remove center crop
-    #r = 224/256
-    #crop_size = [int(s * r) for s in img_size]
+    # Apply center crop on MVtec AD dataset.
+    # Note: XXX: This technique might not be suitable for real-world data.
+    r = 256/224
+    img_size, crop_size = [int(s * r) for s in img_size], img_size
     
-    if phase == 'train':
+    aug = []
+    if phase == 'train': ...
+        # XXX: It might not work on some subsets of the MVTec AD dataset.
         # aug = [
         #     A.HorizontalFlip(p=0.5),
         #     A.VerticalFlip(p=0.5),
         # ]
-        aug = []
-    else:
-        aug = []
 
     return A.Compose([
         A.Resize(*img_size),
-        #A.CenterCrop(*crop_size),
+        A.CenterCrop(*crop_size),
         *aug,
         A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ToTensorV2(),

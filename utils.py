@@ -11,7 +11,11 @@ from collections import defaultdict, OrderedDict
 
 def get_logger(filename='log', level='INFO', save=False, verbose=True, stream=sys.stderr):
     from logging import getLogger, StreamHandler, FileHandler, Formatter
-    levels = {'DEBUG': 10, 'INFO': 20, 'WARNING': 30, 'ERROR': 40, 'CRITICAL': 50}
+    levels = {'DEBUG': 10, 
+              'INFO': 20, 
+              'WARNING': 30, 
+              'ERROR': 40, 
+              'CRITICAL': 50}
     logger = getLogger(filename)
     logger.setLevel(levels.get(level.upper(), 20))
     if verbose:

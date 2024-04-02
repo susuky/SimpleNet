@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 
 
-class ConstantStd(nn.Module): 
+class ConstantStd(nn.Module):
     def __init__(self, std=0.015, min_std=1e-4, max_std=0.25, trainable=True):
         super(ConstantStd, self).__init__()
         self.trainable = trainable
@@ -16,26 +16,30 @@ class ConstantStd(nn.Module):
         return torch.randn(shape, device=device) * self.std.clamp(self.min_std, self.max_std)
 
 
-class UniformStd(nn.Module): 
+class UniformStd(nn.Module):
     def __init__(self, min_std=1e-4, max_std=0.1, trainable=True):
         super(UniformStd, self).__init__()
         self.trainable = trainable
         requires_grad = trainable
-        self.max_std = nn.Parameter(torch.tensor(max_std), requires_grad=requires_grad)
-        self.min_std = nn.Parameter(torch.tensor(min_std), requires_grad=requires_grad)
+        self.max_std = nn.Parameter(torch.tensor(max_std),
+                                    requires_grad=requires_grad)
+        self.min_std = nn.Parameter(torch.tensor(min_std),
+                                    requires_grad=requires_grad)
         self.dist = torch.distributions.Uniform(self.min_std, self.max_std)
 
     def rsample(self, shape=[], device=None):
         return torch.randn(shape, device=device) * self.dist.rsample(shape).to(device)
 
 
-class NormalStd(nn.Module): 
+class NormalStd(nn.Module):
     def __init__(self, mean=0.0, std=0.015, trainable=True):
         super(NormalStd, self).__init__()
         self.trainable = trainable
         requires_grad = trainable
-        self.mean_std = nn.Parameter(torch.tensor(mean), requires_grad=requires_grad)
-        self.std_std = nn.Parameter(torch.tensor(std), requires_grad=requires_grad)
+        self.mean_std = nn.Parameter(torch.tensor(mean),
+                                     requires_grad=requires_grad)
+        self.std_std = nn.Parameter(torch.tensor(std),
+                                    requires_grad=requires_grad)
         self.dist = torch.distributions.Normal(self.mean_std, self.std_std)
 
     def rsample(self, shape=[], device=None):
@@ -47,8 +51,10 @@ class Uniform(nn.Module):
         super(Uniform, self).__init__()
         self.trainable = trainable
         requires_grad = trainable
-        self.low = nn.Parameter(torch.tensor(low), requires_grad=requires_grad)
-        self.high = nn.Parameter(torch.tensor(high), requires_grad=requires_grad)
+        self.low = nn.Parameter(torch.tensor(low),
+                                requires_grad=requires_grad)
+        self.high = nn.Parameter(torch.tensor(high),
+                                 requires_grad=requires_grad)
         self.dist = torch.distributions.Uniform(self.low, self.high)
 
     def rsample(self, shape=[], device=None):
@@ -79,6 +85,7 @@ class NoiseDistribution(nn.Module):
             max_std (float): Upper bound of std, if std is learnable. Default: 0.25
             min_std (float): Lower bound of std, if std is learnable. Default: 1e-4
     '''
+
     def __init__(self, method='uniformstd', trainable=True, **kwargs) -> None:
         super().__init__()
         self.trainable = trainable
@@ -103,4 +110,3 @@ class NoiseDistribution(nn.Module):
 
     def rsample(self, shape, device=None):
         return self.dist.rsample(shape, device)
-

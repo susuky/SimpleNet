@@ -9,33 +9,69 @@ from pathlib import Path
 from tqdm import tqdm
 
 from dataset import MVTecADDataset
-from modules import ComputeLoss, SimpleNet, save_model, has_trainable_params, Optimizers
+from modules import (
+    ComputeLoss, 
+    Optimizers,
+    SimpleNet,
+    save_model, 
+)
 from utils import (
-    seed_everything, 
-    MetricMonitor, 
+    MetricMonitor,
     ModelCheckpoint,
-    image_tonumpy, 
-    compute_metrics, 
-    normalize,
-    get_optimal_threshold
+    compute_metrics,
+    get_optimal_threshold,
+    image_tonumpy,
+    seed_everything,
 )
 
 
 def parse_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--backbone', type=str, default='resnet18', help='model name')
-    parser.add_argument('--root', type=str, default='mvtecad_dataset', help='dataset root')
-    parser.add_argument('--category', type=str, default='bottle', help='category')
-    parser.add_argument('--model-path', type=str, default=f'./models/model.pth', help='model path')
-    parser.add_argument('--img-size', '--imgsz', '--img-sz', '--image-size', nargs='+', type=int, default=[256, 256], help='inference size h,w')
-    parser.add_argument('--bs', '--batch-size', type=int, default=4, help='batch size')
-    parser.add_argument('--epochs', type=int, default=160, help='number of epochs')
-    parser.add_argument('--seed', type=int, default=42, help='global random seed')
+    parser.add_argument('--backbone', 
+                        type=str,
+                        default='resnet18', 
+                        help='model name')
+    parser.add_argument('--root', 
+                        type=str,
+                        default='mvtecad_dataset', 
+                        help='dataset root')
+    parser.add_argument('--category', 
+                        type=str,
+                        default='bottle', 
+                        help='category')
+    parser.add_argument('--model-path', 
+                        type=str,
+                        default=f'./models/model.pth', 
+                        help='model path')
+    parser.add_argument('--img-size', '--imgsz', '--img-sz', '--image-size',
+                        nargs='+', 
+                        type=int, 
+                        default=[256, 256], 
+                        help='inference size h,w')
+    parser.add_argument('--bs', '--batch-size', 
+                        type=int,
+                        default=4, 
+                        help='batch size')
+    parser.add_argument('--epochs', 
+                        type=int, 
+                        default=160,
+                        help='number of epochs')
+    parser.add_argument('--seed', 
+                        type=int, 
+                        default=42,
+                        help='global random seed')
     opt = parser.parse_args()
     return opt
 
 
-def evaluate(model, dl, device, epoch=None, draw=False, track=False, threshold=0.5, **kwargs):
+def evaluate(model, 
+             dl, 
+             device, 
+             epoch=None, 
+             draw=False, 
+             track=False, 
+             threshold=0.5, 
+             **kwargs):
     metric_monitor = MetricMonitor()
     model.eval()
 
@@ -55,7 +91,7 @@ def evaluate(model, dl, device, epoch=None, draw=False, track=False, threshold=0
     labels = []
     maps = []
     masks_gt = []
-    print(f'score range: {model.max:.4f}, {model.min:.4f}')
+    print(f'score range: {model.max:.4f}, {model.min:.4f}') # debug
     for i, (xs, ys, paths, masks) in enumerate(dl, 1):
         xs = xs.to(device)
         labels.extend(ys.numpy().tolist())
@@ -76,7 +112,6 @@ def evaluate(model, dl, device, epoch=None, draw=False, track=False, threshold=0
                 img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
                 anomaly_map = anomaly_map.cpu().numpy()
-                #anomaly_map = normalize(anomaly_map, model.min, model.max)
                 anomaly_map = (anomaly_map * 255).clip(0, 255).astype(np.uint8)
                 anomaly_map = cv2.applyColorMap(anomaly_map, cv2.COLORMAP_JET)
 
@@ -93,7 +128,7 @@ def evaluate(model, dl, device, epoch=None, draw=False, track=False, threshold=0
     model.threshold = metrics['threshold']
 
     # calculate pixel level metrics (XXX: it takes time to compute these metrics)
-    if kwargs.get('comput_pixelwise', False): 
+    if kwargs.get('comput_pixelwise', False):
         masks_gt = np.concatenate(masks_gt, axis=0)
         maps = np.concatenate(maps, axis=0)
         pixel_level_metrics = compute_metrics(maps, masks_gt)
@@ -103,7 +138,7 @@ def evaluate(model, dl, device, epoch=None, draw=False, track=False, threshold=0
     return metric_monitor
 
 
-def one_epoch(model, criterion, optimizers, dl, epoch, device):
+def train_one_epoch(model, criterion, optimizers, dl, epoch, device):
     metric_monitor = MetricMonitor()
     model.train()
 
@@ -112,21 +147,22 @@ def one_epoch(model, criterion, optimizers, dl, epoch, device):
         # prepare data
         xs = xs.to(device)
         optimizers.zero_grad()
-        
+
         # forward
         feats = model.backbone(xs)
         embedding = model.adaptor(feats)
-        loss, p_ture, p_fake = criterion(embedding, model.generator, model.discriminator)
+        loss, p_ture, p_fake = criterion(embedding, 
+                                         model.generator, 
+                                         model.discriminator)
 
         # update metric
         metric_monitor.update('Loss', loss.item())
         metric_monitor.update('p_true', p_ture.item())
         metric_monitor.update('p_fake', p_fake.item())
-        if model.generator.trainable:
-            for name, param in model.generator.named_parameters():
-                name = name[name.rfind('.')+1:]
-                metric_monitor.update(name, param.item())
-        
+        for name, param in model.generator.named_parameters():
+            name = name[name.rfind('.')+1:]
+            metric_monitor.update(name, param.item())
+
         # update model
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
@@ -145,14 +181,14 @@ def train(opt=parse_opt()):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     train_ds = MVTecADDataset(opt.root, opt.category, 'train', opt.img_size)
-    train_dl = torch.utils.data.DataLoader(train_ds, 
-                                           batch_size=opt.bs, 
-                                           num_workers=4, 
+    train_dl = torch.utils.data.DataLoader(train_ds,
+                                           batch_size=opt.bs,
+                                           num_workers=4,
                                            shuffle=True)
     test_ds = MVTecADDataset(opt.root, opt.category, 'test', opt.img_size)
-    test_dl = torch.utils.data.DataLoader(test_ds, 
-                                          batch_size=1, 
-                                          num_workers=4, 
+    test_dl = torch.utils.data.DataLoader(test_ds,
+                                          batch_size=1,
+                                          num_workers=4,
                                           shuffle=False)
 
     model = SimpleNet(opt.backbone, pretrained=True).to(device)
@@ -163,15 +199,20 @@ def train(opt=parse_opt()):
     best_metrics = {'Accuracy': 0.0}
     for epoch in range(1, opt.epochs+1):
         # Callback: before_epoch
-        one_epoch(model, criterion, optimizers, train_dl, epoch, device)
+        train_one_epoch(model, 
+                        criterion, 
+                        optimizers, 
+                        train_dl, 
+                        epoch, 
+                        device)
         threshold, _ = get_optimal_threshold(model, train_dl, device)
-        metric_monitor = evaluate(model, 
-                                  test_dl, 
-                                  device, 
-                                  epoch, 
-                                  draw=(epoch-1) % 10 == 0, 
-                                  threshold=threshold, 
-                                  track=True, 
+        metric_monitor = evaluate(model,
+                                  test_dl,
+                                  device,
+                                  epoch,
+                                  draw=(epoch-1) % 10 == 0,
+                                  threshold=threshold,
+                                  track=True,
                                   category=opt.category)
 
         # Callback: after_epoch
@@ -180,12 +221,19 @@ def train(opt=parse_opt()):
         if metrics['Accuracy'] > best_metrics['Accuracy']:
             best_metrics = metrics
 
-    metric_monitor_last = evaluate(model, test_dl, device, epoch='last', draw=True, track=False, category=opt.category)
+    metric_monitor_last = evaluate(model, 
+                                   test_dl, 
+                                   device, 
+                                   epoch='last', 
+                                   draw=True, 
+                                   track=False, 
+                                   category=opt.category)
     last_metrics = metric_monitor_last.get_metrics()
 
     # Callback: after_fit
     # save model
-    save_model(state_dict=model_checkpoint.state_dict, model_name=f'{opt.category}-best.pth')
+    save_model(state_dict=model_checkpoint.state_dict,
+               model_name=f'{opt.category}-best.pth')
     save_model(model=model, model_name=f'{opt.category}-last.pth')
 
     # print result
