@@ -20,7 +20,7 @@ from utils import (
     ModelCheckpoint,
     compute_metrics,
     get_optimal_threshold,
-    image_tonumpy,
+    plot_evaluate_results,
     seed_everything,
 )
 
@@ -143,22 +143,7 @@ def evaluate(model,
 
         if draw:
             for img, path, anomaly_map, mask in zip(xs, paths, anomaly_maps, masks):
-                path = Path(path)
-                label = path.parts[-2]
-                name = f'{Path(path).stem}-{label}'
-                img = image_tonumpy(img)
-                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-
-                anomaly_map = anomaly_map.cpu().numpy()
-                anomaly_map = (anomaly_map * 255).clip(0, 255).astype(np.uint8)
-                anomaly_map = cv2.applyColorMap(anomaly_map, cv2.COLORMAP_JET)
-
-                mask = mask.cpu().numpy()
-                mask = (mask * 255).clip(0, 255).astype(np.uint8)
-                mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
-
-                img = np.hstack([img, anomaly_map, mask])
-                cv2.imwrite(os.path.join(parent, f'{name}.jpg'), img)
+                plot_evaluate_results(img, anomaly_map, mask, path, parent=parent)
 
     scores = np.array(scores)
     metrics = compute_metrics(scores, np.array(labels), threshold)

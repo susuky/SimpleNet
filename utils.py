@@ -7,6 +7,7 @@ import sklearn.metrics
 import sys
 
 from collections import defaultdict, OrderedDict
+from pathlib import Path
 
 
 def get_logger(filename='log', level='INFO', save=False, verbose=True, stream=sys.stderr):
@@ -212,3 +213,25 @@ def image_tonumpy(img,
 def normalize(x, min, max):
     return (x - min) / (max - min)
 
+
+def plot_evaluate_results(image, anomaly_map, gt_mask, path, parent=''):
+    path = Path(path)
+    label = path.parts[-2]
+    name = f'{Path(path).stem}-{label}'
+
+    # image: torch2numpy -> RGB2BGR
+    img = image_tonumpy(image)
+    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+    # anomaly_map: torch2numpy -> apply color map
+    anomaly_map = anomaly_map.cpu().numpy()
+    anomaly_map = (anomaly_map * 255).clip(0, 255).astype(np.uint8)
+    anomaly_map = cv2.applyColorMap(anomaly_map, cv2.COLORMAP_JET)
+
+    # gt_mask: torch2numpy -> GRAY2BGR
+    mask = gt_mask.cpu().numpy()
+    mask = (mask * 255).clip(0, 255).astype(np.uint8)
+    mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+
+    img = np.hstack([img, anomaly_map, mask])
+    cv2.imwrite(os.path.join(parent, f'{name}.jpg'), img)

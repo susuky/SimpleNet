@@ -62,15 +62,35 @@ class TimmFeatureExtractor(nn.Module):
 
 
 class Backbone(TimmFeatureExtractor):
+    tv_weights = {
+        'resnet18': 'ResNet18_Weights',
+        'resnet34': 'ResNet34_Weights',
+        'resnet50': 'ResNet50_Weights',
+        'resnet101': 'ResNet101_Weights',
+        'resnet152': 'ResNet152_Weights',
+        'resnext50_32x4d': 'ResNeXt50_32X4D_Weights',
+        'resnext101_32x8d': 'ResNeXt101_32X8D_Weights',
+        'resnext101_64x4d': 'ResNeXt101_64X4D_Weights',
+        'wide_resnet50_2': 'Wide_ResNet50_2_Weights',
+        'wide_resnet101_2': 'Wide_ResNet101_2_Weights'
+    }
+
     def __init__(self,
                  model_name='resnet18',
                  pretrained=True,
                  layers=[2, 3],
                  **kwargs):
         super(Backbone, self).__init__(model_name,
-                                       pretrained=pretrained,
+                                       pretrained=pretrained and model_name not in self.tv_weights,
                                        layers=layers,
                                        **kwargs)
+        if pretrained and model_name in self.tv_weights:
+            # Note: Use torchvision weights instead of timm
+            # # XXX: The resnet weights provided by timm might not be trainable sometimes.
+            weight = torchvision.models.__dict__[self.tv_weights[model_name]]
+            state_dict = weight.IMAGENET1K_V1.get_state_dict()
+            self.feature_extractor.load_state_dict(state_dict, strict=False)
+
         for p in self.feature_extractor.parameters():
             p.requires_grad = False
 
